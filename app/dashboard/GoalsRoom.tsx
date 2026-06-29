@@ -38,12 +38,13 @@ const COLOR_NAMES = ['GOLD','ORANGE','RED','BLUE','GREEN','PURPLE'];
 function sfxCheck(){try{const a=new(window.AudioContext||(window as any).webkitAudioContext)(),o=a.createOscillator(),g=a.createGain();o.type='square';o.frequency.value=880;g.gain.setValueAtTime(0.13,a.currentTime);g.gain.exponentialRampToValueAtTime(0.0001,a.currentTime+0.09);o.connect(g);g.connect(a.destination);o.start();o.stop(a.currentTime+0.09);}catch(e){}}
 function sfxTap(){try{const a=new(window.AudioContext||(window as any).webkitAudioContext)(),o=a.createOscillator(),g=a.createGain();o.type='square';o.frequency.value=660;g.gain.setValueAtTime(0.12,a.currentTime);g.gain.exponentialRampToValueAtTime(0.0001,a.currentTime+0.06);o.connect(g);g.connect(a.destination);o.start();o.stop(a.currentTime+0.06);}catch(e){}}
 
-export default function GoalsRoom({ userId }: { userId: string }) {
+export default function GoalsRoom({ userId: userIdProp }: { userId: string | null }) {
   const [goals, setGoals] = useState<Goal[]>([]);
   const [loading, setLoading] = useState(true);
   const [adding, setAdding] = useState(false);
   const [editing, setEditing] = useState<string | null>(null);
   const [editVal, setEditVal] = useState('');
+  const [uid, setUid] = useState<string | null>(userIdProp);
 
   // form state
   const [title, setTitle] = useState('');
@@ -57,20 +58,26 @@ export default function GoalsRoom({ userId }: { userId: string }) {
   const supabase = createClient();
 
   useEffect(() => {
-    load();
-  }, []);
-
-  async function load() {
-    const { data } = await supabase.from('goals').select('*').eq('user_id', userId).order('created_at');
-    if (data) setGoals(data as Goal[]);
-    setLoading(false);
-  }
+    async function init() {
+      let id = userIdProp;
+      if (!id) {
+        const { data: { user } } = await supabase.auth.getUser();
+        id = user?.id || null;
+        if (id) setUid(id);
+      }
+      if (!id) { setLoading(false); return; }
+      const { data } = await supabase.from('goals').select('*').eq('user_id', id).order('created_at');
+      if (data) setGoals(data as Goal[]);
+      setLoading(false);
+    }
+    init();
+  }, [userIdProp]);
 
   async function addGoal() {
     if (!title.trim()) return;
     sfxCheck();
     const entry = {
-      user_id: userId,
+      user_id: uid,
       title: title.trim(),
       type,
       current: parseFloat(current) || 0,

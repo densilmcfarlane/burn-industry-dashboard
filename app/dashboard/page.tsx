@@ -3,6 +3,7 @@ import { useState, useEffect } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { useAppData } from '@/lib/useAppData';
 import MoneyRoom from './MoneyRoom';
+import GoalsRoom from './GoalsRoom';
 
 const C = { bg:'#0D0D0D', card:'#111', border:'#1e1e1e', gold:'#FFD60A', orange:'#ff6b35', red:'#D91F26', blue:'#7eb8f7', text:'#F2F2F2', muted:'#666', dim:'#2a2a2a' };
 const display: React.CSSProperties = { fontFamily:"'Anton',sans-serif", letterSpacing:'0.02em', textTransform:'uppercase' };
@@ -552,34 +553,7 @@ export default function Dashboard() {
           {Object.keys(db.journal).length===0&&<div style={{...mono,fontSize:12,color:C.muted,fontStyle:'italic',paddingTop:8}}>Nothing logged yet. Your sentences show up here once you write them in ROUTINES.</div>}
         </>}
 
-        {room==='goals'&&<>
-          <div style={{...card,borderLeft:`3px solid ${C.red}`,marginBottom:18}}>
-            <div style={{...lbl,color:C.red}}>THE BOSS — 150K FOLLOWERS</div>
-            <div style={{display:'flex',justifyContent:'space-between',alignItems:'baseline',marginTop:8,marginBottom:8}}>
-              <span style={{...display,fontSize:28,color:C.gold}}>{FOLLOWERS_NOW.toLocaleString()}</span>
-              <span style={{...mono,fontSize:12,color:C.muted}}>/ {FOLLOWER_GOAL.toLocaleString()}</span>
-            </div>
-            <div style={{background:'#0a0a0a',border:`1px solid ${C.border}`,borderRadius:3,height:18,overflow:'hidden'}}>
-              <div style={{height:'100%',width:`${Math.max((FOLLOWERS_NOW/FOLLOWER_GOAL)*100,2)}%`,background:`linear-gradient(90deg,${C.red},${C.gold})`}}/>
-            </div>
-            <div style={{...mono,fontSize:11,color:C.muted,marginTop:8}}>{Math.round((FOLLOWERS_NOW/FOLLOWER_GOAL)*100)}% chipped down. {(FOLLOWER_GOAL-FOLLOWERS_NOW).toLocaleString()} health left on the boss.</div>
-          </div>
-          <div style={{...card,borderLeft:`3px solid ${C.gold}`}}>
-            <div style={{...lbl,color:C.gold}}>THE MISSION</div>
-            <div style={{...mono,fontSize:13,color:C.muted,lineHeight:1.7,fontStyle:'italic'}}>"Protecting each other because the government won't."</div>
-          </div>
-          {VISION.map((v,i)=>(
-            <div key={i} style={{...card,borderLeft:`3px solid ${v.color}`}}>
-              <div style={{...lbl,color:v.color}}>{v.year}</div>
-              {v.items.map((item,j)=>(
-                <div key={j} style={{display:'flex',gap:8,marginBottom:6}}>
-                  <span style={{color:v.color,flexShrink:0}}>→</span>
-                  <span style={{...mono,fontSize:13,color:C.muted,lineHeight:1.5}}>{item}</span>
-                </div>
-              ))}
-            </div>
-          ))}
-        </>}
+        {room==='goals'&&<GoalsRoom userId={db.userId} />}
 
         {room==='pocket'&&<>
           <div style={{display:'flex',gap:6,marginBottom:16}}>
