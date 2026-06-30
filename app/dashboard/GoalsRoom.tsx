@@ -19,6 +19,7 @@ const VISION = [
   { year:'YEAR 5', color:'#e8192c', items:['18,000 capacity at home','Coachella top liner','Solo film released','Music/creative agency running','Multi-millionaire'] },
 ];
 
+type Milestone = { id:string; label:string; value:number; done:boolean };
 type Goal = {
   id: string;
   user_id: string;
@@ -29,11 +30,11 @@ type Goal = {
   unit: string;
   deadline: string | null;
   color: string;
+  milestones: Milestone[];
   created_at: string;
 };
 
 const COLORS = [C.gold, C.orange, C.red, C.blue, C.green, '#c084fc'];
-const COLOR_NAMES = ['GOLD','ORANGE','RED','BLUE','GREEN','PURPLE'];
 
 function sfxCheck(){try{const a=new(window.AudioContext||(window as any).webkitAudioContext)(),o=a.createOscillator(),g=a.createGain();o.type='square';o.frequency.value=880;g.gain.setValueAtTime(0.13,a.currentTime);g.gain.exponentialRampToValueAtTime(0.0001,a.currentTime+0.09);o.connect(g);g.connect(a.destination);o.start();o.stop(a.currentTime+0.09);}catch(e){}}
 function sfxTap(){try{const a=new(window.AudioContext||(window as any).webkitAudioContext)(),o=a.createOscillator(),g=a.createGain();o.type='square';o.frequency.value=660;g.gain.setValueAtTime(0.12,a.currentTime);g.gain.exponentialRampToValueAtTime(0.0001,a.currentTime+0.06);o.connect(g);g.connect(a.destination);o.start();o.stop(a.currentTime+0.06);}catch(e){}}
@@ -42,11 +43,11 @@ export default function GoalsRoom({ userId: userIdProp }: { userId: string | nul
   const [goals, setGoals] = useState<Goal[]>([]);
   const [loading, setLoading] = useState(true);
   const [adding, setAdding] = useState(false);
+  const [expanded, setExpanded] = useState<string | null>(null);
   const [editing, setEditing] = useState<string | null>(null);
   const [editVal, setEditVal] = useState('');
   const [uid, setUid] = useState<string | null>(userIdProp);
 
-  // form state
   const [title, setTitle] = useState('');
   const [type, setType] = useState<'number'|'deadline'>('number');
   const [current, setCurrent] = useState('');
@@ -54,6 +55,10 @@ export default function GoalsRoom({ userId: userIdProp }: { userId: string | nul
   const [unit, setUnit] = useState('');
   const [deadline, setDeadline] = useState('');
   const [color, setColor] = useState(C.gold);
+
+  // milestone form (inside expanded card)
+  const [msLabel, setMsLabel] = useState('');
+  const [msValue, setMsValue] = useState('');
 
   const supabase = createClient();
 
@@ -67,14 +72,14 @@ export default function GoalsRoom({ userId: userIdProp }: { userId: string | nul
       }
       if (!id) { setLoading(false); return; }
       const { data } = await supabase.from('goals').select('*').eq('user_id', id).order('created_at');
-      if (data) setGoals(data as Goal[]);
+      if (data) setGoals(data.map((g:any) => ({ ...g, milestones: g.milestones || [] })) as Goal[]);
       setLoading(false);
     }
     init();
   }, [userIdProp]);
 
   async function addGoal() {
-    if (!title.trim()) return;
+    if (!title.trim() || !uid) return;
     sfxCheck();
     const entry = {
       user_id: uid,
@@ -85,9 +90,10 @@ export default function GoalsRoom({ userId: userIdProp }: { userId: string | nul
       unit: unit.trim() || '',
       deadline: type === 'deadline' ? deadline || null : null,
       color,
+      milestones: [],
     };
     const { data } = await supabase.from('goals').insert(entry).select().single();
-    if (data) setGoals(g => [...g, data as Goal]);
+    if (data) setGoals(g => [...g, { ...data, milestones: [] } as Goal]);
     setTitle(''); setCurrent(''); setTarget(''); setUnit(''); setDeadline(''); setColor(C.gold); setAdding(false);
   }
 
@@ -103,6 +109,36 @@ export default function GoalsRoom({ userId: userIdProp }: { userId: string | nul
   async function deleteGoal(id: string) {
     await supabase.from('goals').delete().eq('id', id);
     setGoals(g => g.filter(x => x.id !== id));
+    if (expanded === id) setExpanded(null);
+  }
+
+  async function addMilestone(goalId: string) {
+    if (!msLabel.trim() || !msValue) return;
+    sfxTap();
+    const goal = goals.find(g => g.id === goalId);
+    if (!goal) return;
+    const newMs: Milestone = { id: String(Date.now()), label: msLabel.trim(), value: parseFloat(msValue) || 0, done: false };
+    const updated = [...goal.milestones, newMs].sort((a,b) => a.value - b.value);
+    await supabase.from('goals').update({ milestones: updated }).eq('id', goalId);
+    setGoals(g => g.map(x => x.id === goalId ? { ...x, milestones: updated } : x));
+    setMsLabel(''); setMsValue('');
+  }
+
+  async function toggleMilestone(goalId: string, msId: string) {
+    sfxCheck();
+    const goal = goals.find(g => g.id === goalId);
+    if (!goal) return;
+    const updated = goal.milestones.map(m => m.id === msId ? { ...m, done: !m.done } : m);
+    await supabase.from('goals').update({ milestones: updated }).eq('id', goalId);
+    setGoals(g => g.map(x => x.id === goalId ? { ...x, milestones: updated } : x));
+  }
+
+  async function removeMilestone(goalId: string, msId: string) {
+    const goal = goals.find(g => g.id === goalId);
+    if (!goal) return;
+    const updated = goal.milestones.filter(m => m.id !== msId);
+    await supabase.from('goals').update({ milestones: updated }).eq('id', goalId);
+    setGoals(g => g.map(x => x.id === goalId ? { ...x, milestones: updated } : x));
   }
 
   function daysUntil(dateStr: string) {
@@ -125,15 +161,7 @@ export default function GoalsRoom({ userId: userIdProp }: { userId: string | nul
   }
 
   function getStatusColor(pct: number, goal: Goal) {
-    if (goal.type === 'deadline') {
-      const d = goal.deadline ? daysUntil(goal.deadline) : 999;
-      if (d < 0) return C.muted;
-      if (d < 14) return C.red;
-      if (d < 30) return C.orange;
-      return goal.color;
-    }
     if (pct >= 100) return C.green;
-    if (pct >= 75) return C.gold;
     return goal.color;
   }
 
@@ -142,7 +170,6 @@ export default function GoalsRoom({ userId: userIdProp }: { userId: string | nul
 
   return (
     <div>
-      {/* ── BOSS: 150K FOLLOWERS ── */}
       <div style={{ ...card, borderLeft:`3px solid ${C.red}`, marginBottom:18 }}>
         <div style={{ ...lbl, color:C.red }}>THE BOSS — 150K FOLLOWERS</div>
         <div style={{ display:'flex', justifyContent:'space-between', alignItems:'baseline', marginTop:8, marginBottom:8 }}>
@@ -157,8 +184,155 @@ export default function GoalsRoom({ userId: userIdProp }: { userId: string | nul
         </div>
       </div>
 
-      {/* ── VISION ── */}
-      <div style={{ ...card, borderLeft:`3px solid ${C.gold}` }}>
+      {/* CUSTOM GOALS — moved up, before vision board */}
+      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', margin:'18px 0 12px' }}>
+        <div style={{ ...lbl, marginBottom:0 }}>MY GOALS</div>
+        <button onClick={() => { sfxTap(); setAdding(a => !a); }}
+          style={{ ...mono, background:'transparent', border:`1px solid ${adding?C.red:C.gold}`, borderRadius:3, color:adding?C.red:C.gold, fontSize:9, letterSpacing:'0.2em', padding:'5px 12px', cursor:'pointer' }}>
+          {adding ? '✕ CANCEL' : '+ ADD GOAL'}
+        </button>
+      </div>
+
+      {adding && (
+        <div style={{ ...card, borderLeft:`3px solid ${C.gold}` }}>
+          <div style={{ ...lbl, color:C.gold, marginBottom:12 }}>NEW GOAL</div>
+          <div style={{ ...mono, fontSize:9, letterSpacing:'0.2em', color:C.muted, marginBottom:4 }}>GOAL</div>
+          <input value={title} onChange={e=>setTitle(e.target.value)} placeholder="e.g. 150K Instagram followers"
+            style={{ ...mono, width:'100%', background:'#0a0a0a', border:`1px solid ${C.border}`, borderRadius:3, padding:'9px 11px', fontSize:13, color:C.text, outline:'none', marginBottom:12 }}/>
+          <div style={{ ...mono, fontSize:9, letterSpacing:'0.2em', color:C.muted, marginBottom:6 }}>TYPE</div>
+          <div style={{ display:'flex', gap:6, marginBottom:12 }}>
+            {[['number','NUMBER TARGET'],['deadline','DEADLINE']].map(([k,l]) => (
+              <button key={k} onClick={() => setType(k as any)}
+                style={{ ...mono, flex:1, padding:'8px 10px', borderRadius:3, border:`1px solid ${type===k?C.gold:C.border}`, background:type===k?C.gold:'transparent', color:type===k?'#0D0D0D':C.muted, fontSize:9, letterSpacing:'0.1em', fontWeight:700, cursor:'pointer' }}>{l}</button>
+            ))}
+          </div>
+          {type === 'number' && (
+            <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:8, marginBottom:12 }}>
+              {[['CURRENT',current,setCurrent,'0'],['TARGET',target,setTarget,'100'],['UNIT',unit,setUnit,'followers']].map(([l,v,fn,ph]) => (
+                <div key={String(l)}>
+                  <div style={{ ...mono, fontSize:9, letterSpacing:'0.2em', color:C.muted, marginBottom:4 }}>{String(l)}</div>
+                  <input value={String(v)} onChange={e=>(fn as any)(e.target.value)} placeholder={String(ph)} inputMode={String(l)!=='UNIT'?'decimal':'text'}
+                    style={{ ...mono, width:'100%', background:'#0a0a0a', border:`1px solid ${C.border}`, borderRadius:3, padding:'8px 10px', fontSize:12, color:C.text, outline:'none' }}/>
+                </div>
+              ))}
+            </div>
+          )}
+          {type === 'deadline' && (
+            <div style={{ marginBottom:12 }}>
+              <div style={{ ...mono, fontSize:9, letterSpacing:'0.2em', color:C.muted, marginBottom:4 }}>DEADLINE</div>
+              <input type="date" value={deadline} onChange={e=>setDeadline(e.target.value)}
+                style={{ ...mono, width:'100%', background:'#0a0a0a', border:`1px solid ${C.border}`, borderRadius:3, padding:'8px 10px', fontSize:12, color:C.text, outline:'none', marginBottom:8 }}/>
+            </div>
+          )}
+          <div style={{ ...mono, fontSize:9, letterSpacing:'0.2em', color:C.muted, marginBottom:8 }}>COLOR</div>
+          <div style={{ display:'flex', gap:8, marginBottom:16 }}>
+            {COLORS.map(c => (
+              <button key={c} onClick={() => setColor(c)}
+                style={{ width:28, height:28, borderRadius:'50%', background:c, border:`3px solid ${color===c?C.text:C.border}`, cursor:'pointer' }}/>
+            ))}
+          </div>
+          <button onClick={addGoal} style={{ ...btnFull(C.gold), width:'100%', padding:12 }}>ADD GOAL →</button>
+        </div>
+      )}
+
+      {loading && <div style={{ ...mono, fontSize:12, color:C.muted, padding:'16px 0' }}>Loading goals...</div>}
+      {!loading && goals.length === 0 && !adding && (
+        <div style={{ ...card, textAlign:'center', opacity:0.5 }}>
+          <div style={{ ...mono, fontSize:12, color:C.dim }}>No goals yet. Tap + ADD GOAL to set your first target.</div>
+        </div>
+      )}
+
+      {goals.map(goal => {
+        const pct = getPct(goal);
+        const statusColor = getStatusColor(pct, goal);
+        const isComplete = pct >= 100;
+        const isEditing = editing === goal.id;
+        const isExpanded = expanded === goal.id;
+        const d = goal.deadline ? daysUntil(goal.deadline) : null;
+        const doneMilestones = goal.milestones.filter(m => m.done).length;
+
+        return (
+          <div key={goal.id} style={{ ...card, borderLeft:`3px solid ${statusColor}`, background: isComplete ? '#0a1a0a' : C.card, padding:0, overflow:'hidden' }}>
+            {/* COMPACT HEADER — always visible, tap to expand */}
+            <div onClick={() => { sfxTap(); setExpanded(isExpanded ? null : goal.id); }}
+              style={{ padding:14, cursor:'pointer' }}>
+              <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:8 }}>
+                <div style={{ ...display, fontSize:15, color:statusColor, lineHeight:1.2 }}>{goal.title}</div>
+                <div style={{ display:'flex', gap:8, alignItems:'center', flexShrink:0 }}>
+                  {isComplete && <span style={{ ...pixel, fontSize:7, color:C.green }}>DONE</span>}
+                  <span style={{ ...mono, fontSize:14, color:C.muted, transform: isExpanded?'rotate(90deg)':'none', display:'inline-block', transition:'transform 0.2s' }}>›</span>
+                </div>
+              </div>
+              <div style={{ background:'#0a0a0a', border:`1px solid ${C.border}`, borderRadius:3, height:12, overflow:'hidden', marginBottom:6 }}>
+                <div style={{ height:'100%', width:`${pct}%`, background: isComplete ? C.green : `linear-gradient(90deg,${statusColor}88,${statusColor})`, transition:'width 0.4s' }}/>
+              </div>
+              <div style={{ display:'flex', justifyContent:'space-between', ...mono, fontSize:10, color:C.muted }}>
+                <span>
+                  {goal.type === 'number'
+                    ? `${goal.current.toLocaleString()}${goal.unit?' '+goal.unit:''} / ${goal.target.toLocaleString()}${goal.unit?' '+goal.unit:''}`
+                    : (d===null?'No deadline': d<0?`Passed ${Math.abs(d)}d ago`: d===0?'TODAY': `${d} days left`)}
+                </span>
+                <span>{pct}%{goal.milestones.length>0?` · ${doneMilestones}/${goal.milestones.length} milestones`:''}</span>
+              </div>
+            </div>
+
+            {/* EXPANDED DETAIL */}
+            {isExpanded && (
+              <div style={{ padding:'0 14px 14px', borderTop:`1px solid ${C.border}` }}>
+                {/* update current value */}
+                {goal.type === 'number' && (
+                  <div style={{ display:'flex', gap:8, alignItems:'center', margin:'12px 0' }}>
+                    {!isEditing ? (
+                      <button onClick={(e) => { e.stopPropagation(); setEditing(goal.id); setEditVal(String(goal.current)); }}
+                        style={{ ...btnOut(goal.color), flex:1, padding:'8px' }}>UPDATE PROGRESS</button>
+                    ) : (
+                      <>
+                        <input autoFocus value={editVal} onChange={e=>setEditVal(e.target.value)}
+                          onKeyDown={e=>{ if(e.key==='Enter') updateCurrent(goal.id,editVal); if(e.key==='Escape'){setEditing(null);setEditVal('');} }}
+                          onClick={e=>e.stopPropagation()}
+                          inputMode="decimal"
+                          style={{ ...mono, flex:1, background:'#0a0a0a', border:`1px solid ${goal.color}`, borderRadius:3, padding:'8px 10px', fontSize:13, color:goal.color, outline:'none' }}/>
+                        <button onClick={(e) => { e.stopPropagation(); updateCurrent(goal.id, editVal); }}
+                          style={{ ...mono, background:goal.color, border:'none', borderRadius:3, padding:'8px 14px', fontSize:11, fontWeight:700, color:'#0D0D0D', cursor:'pointer' }}>SET</button>
+                      </>
+                    )}
+                  </div>
+                )}
+
+                {/* WORK-BACK PLAN — milestones */}
+                <div style={{ ...mono, fontSize:9, letterSpacing:'0.2em', color:C.muted, margin:'14px 0 10px' }}>WORK-BACK PLAN</div>
+                {goal.milestones.map(m => (
+                  <div key={m.id} onClick={(e) => { e.stopPropagation(); toggleMilestone(goal.id, m.id); }}
+                    style={{ display:'flex', alignItems:'center', gap:10, padding:'8px 0', borderBottom:`1px solid ${C.border}`, cursor:'pointer' }}>
+                    <div style={{ width:20, height:20, borderRadius:'50%', border:`2px solid ${m.done?C.green:C.dim}`, background:m.done?C.green:'transparent', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
+                      {m.done && <span style={{ fontSize:10, color:'#0D0D0D', fontWeight:900 }}>✓</span>}
+                    </div>
+                    <span style={{ ...mono, fontSize:12, color:m.done?C.muted:C.text, textDecoration:m.done?'line-through':'none', flex:1 }}>{m.label}</span>
+                    <span style={{ ...mono, fontSize:11, color:C.dim }}>{m.value.toLocaleString()}{goal.unit?' '+goal.unit:''}</span>
+                    <button onClick={(e) => { e.stopPropagation(); removeMilestone(goal.id, m.id); }}
+                      style={{ ...mono, background:'transparent', border:'none', color:C.dim, fontSize:14, cursor:'pointer' }}>×</button>
+                  </div>
+                ))}
+                {goal.milestones.length === 0 && <div style={{ ...mono, fontSize:11, color:C.dim, fontStyle:'italic', padding:'4px 0 10px' }}>No checkpoints yet — break this goal into steps below.</div>}
+
+                <div style={{ display:'flex', gap:6, marginTop:10 }} onClick={e=>e.stopPropagation()}>
+                  <input value={msLabel} onChange={e=>setMsLabel(e.target.value)} placeholder="Checkpoint (e.g. Reach 25K)"
+                    style={{ ...mono, flex:2, background:'#0a0a0a', border:`1px solid ${C.border}`, borderRadius:3, padding:'7px 9px', fontSize:11, color:C.text, outline:'none' }}/>
+                  <input value={msValue} onChange={e=>setMsValue(e.target.value)} placeholder="Value" inputMode="decimal"
+                    style={{ ...mono, flex:1, background:'#0a0a0a', border:`1px solid ${C.border}`, borderRadius:3, padding:'7px 9px', fontSize:11, color:C.text, outline:'none' }}/>
+                  <button onClick={() => addMilestone(goal.id)} style={{ ...mono, background:goal.color, border:'none', borderRadius:3, padding:'7px 12px', fontSize:10, fontWeight:700, color:'#0D0D0D', cursor:'pointer' }}>+</button>
+                </div>
+
+                <button onClick={(e) => { e.stopPropagation(); deleteGoal(goal.id); }}
+                  style={{ ...mono, background:'transparent', border:'none', color:C.dim, fontSize:10, letterSpacing:'0.1em', cursor:'pointer', marginTop:16, padding:0, textDecoration:'underline' }}>DELETE GOAL</button>
+              </div>
+            )}
+          </div>
+        );
+      })}
+
+      {/* VISION BOARD — moved below custom goals */}
+      <div style={{ ...card, borderLeft:`3px solid ${C.gold}`, marginTop:24 }}>
         <div style={{ ...lbl, color:C.gold }}>THE MISSION</div>
         <div style={{ ...mono, fontSize:13, color:C.muted, lineHeight:1.7, fontStyle:'italic' }}>"Protecting each other because the government won't."</div>
       </div>
@@ -173,146 +347,6 @@ export default function GoalsRoom({ userId: userIdProp }: { userId: string | nul
           ))}
         </div>
       ))}
-
-      {/* ── CUSTOM GOALS ── */}
-      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', margin:'24px 0 12px' }}>
-        <div style={{ ...lbl, marginBottom:0 }}>MY GOALS</div>
-        <button onClick={() => { sfxTap(); setAdding(a => !a); }}
-          style={{ ...mono, background:'transparent', border:`1px solid ${adding?C.red:C.gold}`, borderRadius:3, color:adding?C.red:C.gold, fontSize:9, letterSpacing:'0.2em', padding:'5px 12px', cursor:'pointer' }}>
-          {adding ? '✕ CANCEL' : '+ ADD GOAL'}
-        </button>
-      </div>
-
-      {/* ADD GOAL FORM */}
-      {adding && (
-        <div style={{ ...card, borderLeft:`3px solid ${C.gold}` }}>
-          <div style={{ ...lbl, color:C.gold, marginBottom:12 }}>NEW GOAL</div>
-
-          {/* Title */}
-          <div style={{ ...mono, fontSize:9, letterSpacing:'0.2em', color:C.muted, marginBottom:4 }}>GOAL</div>
-          <input value={title} onChange={e=>setTitle(e.target.value)} placeholder="e.g. 150K Instagram followers"
-            style={{ ...mono, width:'100%', background:'#0a0a0a', border:`1px solid ${C.border}`, borderRadius:3, padding:'9px 11px', fontSize:13, color:C.text, outline:'none', marginBottom:12 }}/>
-
-          {/* Type toggle */}
-          <div style={{ ...mono, fontSize:9, letterSpacing:'0.2em', color:C.muted, marginBottom:6 }}>TYPE</div>
-          <div style={{ display:'flex', gap:6, marginBottom:12 }}>
-            {[['number','NUMBER TARGET'],['deadline','DEADLINE']].map(([k,l]) => (
-              <button key={k} onClick={() => setType(k as any)}
-                style={{ ...mono, flex:1, padding:'8px 10px', borderRadius:3, border:`1px solid ${type===k?C.gold:C.border}`, background:type===k?C.gold:'transparent', color:type===k?'#0D0D0D':C.muted, fontSize:9, letterSpacing:'0.1em', fontWeight:700, cursor:'pointer' }}>{l}</button>
-            ))}
-          </div>
-
-          {type === 'number' && (
-            <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:8, marginBottom:12 }}>
-              {[['CURRENT',current,setCurrent,'0'],['TARGET',target,setTarget,'100'],['UNIT',unit,setUnit,'followers']].map(([l,v,fn,ph]) => (
-                <div key={String(l)}>
-                  <div style={{ ...mono, fontSize:9, letterSpacing:'0.2em', color:C.muted, marginBottom:4 }}>{String(l)}</div>
-                  <input value={String(v)} onChange={e=>(fn as any)(e.target.value)} placeholder={String(ph)} inputMode={String(l)!=='UNIT'?'decimal':'text'}
-                    style={{ ...mono, width:'100%', background:'#0a0a0a', border:`1px solid ${C.border}`, borderRadius:3, padding:'8px 10px', fontSize:12, color:C.text, outline:'none' }}/>
-                </div>
-              ))}
-            </div>
-          )}
-
-          {type === 'deadline' && (
-            <div style={{ marginBottom:12 }}>
-              <div style={{ ...mono, fontSize:9, letterSpacing:'0.2em', color:C.muted, marginBottom:4 }}>DEADLINE</div>
-              <input type="date" value={deadline} onChange={e=>setDeadline(e.target.value)}
-                style={{ ...mono, width:'100%', background:'#0a0a0a', border:`1px solid ${C.border}`, borderRadius:3, padding:'8px 10px', fontSize:12, color:C.text, outline:'none', marginBottom:8 }}/>
-              <div style={{ ...mono, fontSize:9, letterSpacing:'0.2em', color:C.muted, marginBottom:4 }}>NOTES (optional)</div>
-              <input value={unit} onChange={e=>setUnit(e.target.value)} placeholder="e.g. Album release, Tour start"
-                style={{ ...mono, width:'100%', background:'#0a0a0a', border:`1px solid ${C.border}`, borderRadius:3, padding:'8px 10px', fontSize:12, color:C.text, outline:'none' }}/>
-            </div>
-          )}
-
-          {/* Color picker */}
-          <div style={{ ...mono, fontSize:9, letterSpacing:'0.2em', color:C.muted, marginBottom:8 }}>COLOR</div>
-          <div style={{ display:'flex', gap:8, marginBottom:16 }}>
-            {COLORS.map((c,i) => (
-              <button key={c} onClick={() => setColor(c)}
-                style={{ width:28, height:28, borderRadius:'50%', background:c, border:`3px solid ${color===c?C.text:C.border}`, cursor:'pointer' }} title={COLOR_NAMES[i]}/>
-            ))}
-          </div>
-
-          <button onClick={addGoal} style={{ ...btnFull(C.gold), width:'100%', padding:12 }}>
-            ADD GOAL →
-          </button>
-        </div>
-      )}
-
-      {/* GOAL CARDS */}
-      {loading && <div style={{ ...mono, fontSize:12, color:C.muted, padding:'16px 0' }}>Loading goals...</div>}
-
-      {!loading && goals.length === 0 && !adding && (
-        <div style={{ ...card, textAlign:'center', opacity:0.5 }}>
-          <div style={{ ...mono, fontSize:12, color:C.dim }}>No goals yet. Tap + ADD GOAL to set your first target.</div>
-        </div>
-      )}
-
-      {goals.map(goal => {
-        const pct = getPct(goal);
-        const statusColor = getStatusColor(pct, goal);
-        const isComplete = pct >= 100;
-        const isEditing = editing === goal.id;
-        const d = goal.deadline ? daysUntil(goal.deadline) : null;
-
-        return (
-          <div key={goal.id} style={{ ...card, borderLeft:`3px solid ${statusColor}`, background: isComplete ? '#0a1a0a' : C.card }}>
-            <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:10 }}>
-              <div style={{ flex:1 }}>
-                <div style={{ ...display, fontSize:16, color:statusColor, lineHeight:1.2, marginBottom:4 }}>{goal.title}</div>
-                {goal.unit && goal.type === 'deadline' && <div style={{ ...mono, fontSize:11, color:C.muted }}>{goal.unit}</div>}
-              </div>
-              <div style={{ display:'flex', gap:8, alignItems:'center', flexShrink:0 }}>
-                {isComplete && <span style={{ ...pixel, fontSize:8, color:C.green }}>DONE</span>}
-                <button onClick={() => deleteGoal(goal.id)} style={{ ...mono, background:'transparent', border:'none', color:C.dim, fontSize:15, cursor:'pointer' }}>×</button>
-              </div>
-            </div>
-
-            {/* Progress bar */}
-            <div style={{ background:'#0a0a0a', border:`1px solid ${C.border}`, borderRadius:3, height:14, overflow:'hidden', marginBottom:8 }}>
-              <div style={{ height:'100%', width:`${pct}%`, background: isComplete ? C.green : `linear-gradient(90deg,${statusColor}88,${statusColor})`, transition:'width 0.4s' }}/>
-            </div>
-
-            <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center' }}>
-              {goal.type === 'number' ? (
-                <>
-                  <div style={{ ...mono, fontSize:11, color:C.muted }}>
-                    <span style={{ color:statusColor, fontWeight:700 }}>{goal.current.toLocaleString()}</span>
-                    {goal.unit && ` ${goal.unit}`} of {goal.target.toLocaleString()}{goal.unit && ` ${goal.unit}`}
-                    <span style={{ color:C.dim, marginLeft:8 }}>{pct}%</span>
-                  </div>
-                  {!isEditing ? (
-                    <button onClick={() => { setEditing(goal.id); setEditVal(String(goal.current)); }}
-                      style={{ ...mono, background:'transparent', border:`1px solid ${C.border}`, borderRadius:3, color:C.muted, fontSize:9, letterSpacing:'0.1em', padding:'4px 10px', cursor:'pointer' }}>UPDATE</button>
-                  ) : (
-                    <div style={{ display:'flex', gap:6 }}>
-                      <input autoFocus value={editVal} onChange={e=>setEditVal(e.target.value)}
-                        onKeyDown={e=>{ if(e.key==='Enter') updateCurrent(goal.id,editVal); if(e.key==='Escape'){setEditing(null);setEditVal('');} }}
-                        inputMode="decimal"
-                        style={{ ...mono, width:90, background:'#0a0a0a', border:`1px solid ${goal.color}`, borderRadius:3, padding:'5px 8px', fontSize:12, color:goal.color, outline:'none' }}/>
-                      <button onClick={() => updateCurrent(goal.id, editVal)}
-                        style={{ ...mono, background:goal.color, border:'none', borderRadius:3, padding:'5px 10px', fontSize:10, fontWeight:700, color:'#0D0D0D', cursor:'pointer' }}>SET</button>
-                      <button onClick={() => { setEditing(null); setEditVal(''); }}
-                        style={{ ...mono, background:'transparent', border:`1px solid ${C.border}`, borderRadius:3, padding:'5px 8px', fontSize:10, color:C.muted, cursor:'pointer' }}>✕</button>
-                    </div>
-                  )}
-                </>
-              ) : (
-                <div style={{ ...mono, fontSize:11, color:C.muted }}>
-                  {d === null ? 'No deadline set' :
-                   d < 0 ? <span style={{ color:C.muted }}>Passed {Math.abs(d)} days ago</span> :
-                   d === 0 ? <span style={{ color:C.red }}>TODAY</span> :
-                   d <= 7 ? <span style={{ color:C.red }}>{d} days left</span> :
-                   d <= 30 ? <span style={{ color:C.orange }}>{d} days left</span> :
-                   <span>{d} days left · {Math.round(d/30)} months</span>}
-                  <span style={{ color:C.dim, marginLeft:8 }}>{pct}% of time elapsed</span>
-                </div>
-              )}
-            </div>
-          </div>
-        );
-      })}
     </div>
   );
 }
