@@ -11,7 +11,6 @@ const card: React.CSSProperties = { ...base, background:C.card, border:`1px soli
 const lbl: React.CSSProperties = { fontSize:11, letterSpacing:'0.25em', color:C.muted, marginBottom:8, textTransform:'uppercase', fontWeight:700, ...mono };
 
 const FOLLOWER_GOAL = 150000;
-const FOLLOWERS_NOW = 16500;
 
 const VISION = [
   { year:'NOW → 18 MONTHS', color:'#ffd732', items:['Sell out every show','100K across TikTok / IG / YouTube','Record written and made','Mando sync conversation started','Team becomes affordable'] },
@@ -47,6 +46,9 @@ export default function GoalsRoom({ userId: userIdProp }: { userId: string | nul
   const [editing, setEditing] = useState<string | null>(null);
   const [editVal, setEditVal] = useState('');
   const [uid, setUid] = useState<string | null>(userIdProp);
+  const [followersNow, setFollowersNow] = useState(16500);
+  const [editingFollowers, setEditingFollowers] = useState(false);
+  const [followersEditVal, setFollowersEditVal] = useState('');
 
   const [title, setTitle] = useState('');
   const [type, setType] = useState<'number'|'deadline'>('number');
@@ -72,6 +74,8 @@ export default function GoalsRoom({ userId: userIdProp }: { userId: string | nul
       if (!id) { setLoading(false); return; }
       const { data } = await supabase.from('goals').select('*').eq('user_id', id).order('created_at');
       if (data) setGoals(data.map((g:any) => ({ ...g, milestones: g.milestones || [] })) as Goal[]);
+      const { data: prefData } = await supabase.from('preferences').select('followers_now').eq('user_id', id).single();
+      if (prefData && prefData.followers_now != null) setFollowersNow(prefData.followers_now);
       setLoading(false);
     }
     init();
@@ -140,6 +144,15 @@ export default function GoalsRoom({ userId: userIdProp }: { userId: string | nul
     setGoals(g => g.map(x => x.id === goalId ? { ...x, milestones: updated } : x));
   }
 
+  async function saveFollowers(val: string) {
+    const n = parseInt(val.replace(/[^0-9]/g, ''));
+    if (isNaN(n) || !uid) return;
+    sfxCheck();
+    setFollowersNow(n);
+    await supabase.from('preferences').update({ followers_now: n }).eq('user_id', uid);
+    setEditingFollowers(false); setFollowersEditVal('');
+  }
+
   function daysUntil(dateStr: string) {
     const t = new Date(); t.setHours(0,0,0,0);
     const g = new Date(dateStr); g.setHours(0,0,0,0);
@@ -168,14 +181,30 @@ export default function GoalsRoom({ userId: userIdProp }: { userId: string | nul
       <div style={{ ...card, borderLeft:`4px solid ${C.red}`, marginBottom:20 }}>
         <div style={{ ...lbl, color:C.red }}>The boss — 150K followers</div>
         <div style={{ display:'flex', justifyContent:'space-between', alignItems:'baseline', marginTop:10, marginBottom:10 }}>
-          <span style={{ ...display, fontSize:32, color:C.gold }}>{FOLLOWERS_NOW.toLocaleString()}</span>
+          {!editingFollowers ? (
+            <span style={{ ...display, fontSize:32, color:C.gold }}>{followersNow.toLocaleString()}</span>
+          ) : (
+            <input autoFocus value={followersEditVal} onChange={e=>setFollowersEditVal(e.target.value)}
+              onKeyDown={e=>{ if(e.key==='Enter') saveFollowers(followersEditVal); if(e.key==='Escape'){setEditingFollowers(false);setFollowersEditVal('');} }}
+              inputMode="numeric"
+              style={{ ...mono, width:140, background:'#0a0a0a', border:`1px solid ${C.gold}`, borderRadius:5, padding:'8px 12px', fontSize:20, color:C.gold, outline:'none' }}/>
+          )}
           <span style={{ ...mono, fontSize:14, color:C.muted }}>/ {FOLLOWER_GOAL.toLocaleString()}</span>
         </div>
         <div style={{ background:'#0a0a0a', border:`1px solid ${C.border}`, borderRadius:5, height:20, overflow:'hidden' }}>
-          <div style={{ height:'100%', width:`${Math.max((FOLLOWERS_NOW/FOLLOWER_GOAL)*100,2)}%`, background:`linear-gradient(90deg,${C.red},${C.gold})` }}/>
+          <div style={{ height:'100%', width:`${Math.max((followersNow/FOLLOWER_GOAL)*100,2)}%`, background:`linear-gradient(90deg,${C.red},${C.gold})` }}/>
         </div>
-        <div style={{ ...mono, fontSize:13, color:C.muted, marginTop:10, lineHeight:1.5 }}>
-          {Math.round((FOLLOWERS_NOW/FOLLOWER_GOAL)*100)}% chipped down — {(FOLLOWER_GOAL-FOLLOWERS_NOW).toLocaleString()} to go.
+        <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginTop:10 }}>
+          <div style={{ ...mono, fontSize:13, color:C.muted, lineHeight:1.5 }}>
+            {Math.round((followersNow/FOLLOWER_GOAL)*100)}% chipped down — {(FOLLOWER_GOAL-followersNow).toLocaleString()} to go.
+          </div>
+          {!editingFollowers ? (
+            <button onClick={() => { setEditingFollowers(true); setFollowersEditVal(String(followersNow)); }}
+              style={{ ...mono, background:'transparent', border:`1px solid ${C.border}`, borderRadius:5, color:C.muted, fontSize:10, letterSpacing:'0.1em', fontWeight:700, padding:'6px 12px', cursor:'pointer', flexShrink:0 }}>UPDATE</button>
+          ) : (
+            <button onClick={() => saveFollowers(followersEditVal)}
+              style={{ ...mono, background:C.gold, border:'none', borderRadius:5, color:'#0D0D0D', fontSize:10, letterSpacing:'0.1em', fontWeight:700, padding:'6px 14px', cursor:'pointer', flexShrink:0 }}>SET</button>
+          )}
         </div>
       </div>
 
