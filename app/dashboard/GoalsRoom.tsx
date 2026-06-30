@@ -2,13 +2,13 @@
 import { useState, useEffect } from 'react';
 import { createClient } from '@/lib/supabase/client';
 
-const C = { bg:'#0D0D0D', card:'#111', border:'#1e1e1e', gold:'#FFD60A', orange:'#ff6b35', red:'#D91F26', blue:'#7eb8f7', text:'#F2F2F2', muted:'#666', dim:'#2a2a2a', green:'#4ade80' };
+const C = { bg:'#0D0D0D', card:'#151515', cardLight:'#1a1a1a', border:'#2a2a2a', gold:'#FFD60A', orange:'#ff6b35', red:'#D91F26', blue:'#7eb8f7', text:'#F2F2F2', muted:'#8a8a8a', dim:'#3a3a3a', green:'#4ade80' };
 const mono: React.CSSProperties = { fontFamily:"'Space Mono',monospace" };
 const display: React.CSSProperties = { fontFamily:"'Anton',sans-serif", letterSpacing:'0.02em', textTransform:'uppercase' };
 const pixel: React.CSSProperties = { fontFamily:"'Press Start 2P',monospace" };
 const base: React.CSSProperties = { fontFamily:"'Space Mono',monospace", boxSizing:'border-box' };
-const card: React.CSSProperties = { ...base, background:C.card, border:`1px solid ${C.border}`, borderRadius:4, padding:16, marginBottom:10 };
-const lbl: React.CSSProperties = { fontSize:9, letterSpacing:'0.35em', color:C.muted, marginBottom:6, textTransform:'uppercase', ...mono };
+const card: React.CSSProperties = { ...base, background:C.card, border:`1px solid ${C.border}`, borderRadius:6, padding:18, marginBottom:12 };
+const lbl: React.CSSProperties = { fontSize:11, letterSpacing:'0.25em', color:C.muted, marginBottom:8, textTransform:'uppercase', fontWeight:700, ...mono };
 
 const FOLLOWER_GOAL = 150000;
 const FOLLOWERS_NOW = 16500;
@@ -56,7 +56,6 @@ export default function GoalsRoom({ userId: userIdProp }: { userId: string | nul
   const [deadline, setDeadline] = useState('');
   const [color, setColor] = useState(C.gold);
 
-  // milestone form (inside expanded card)
   const [msLabel, setMsLabel] = useState('');
   const [msValue, setMsValue] = useState('');
 
@@ -160,189 +159,195 @@ export default function GoalsRoom({ userId: userIdProp }: { userId: string | nul
     return Math.max(0, Math.min(100, Math.round((goal.current / goal.target) * 100)));
   }
 
-  function getStatusColor(pct: number, goal: Goal) {
-    if (pct >= 100) return C.green;
-    return goal.color;
-  }
-
-  const btnFull = (c:string): React.CSSProperties => ({ ...base, padding:'10px 18px', background:c, border:`1px solid ${c}`, color:'#0D0D0D', fontSize:10, letterSpacing:'0.25em', fontWeight:700, cursor:'pointer', borderRadius:3 });
-  const btnOut  = (c:string): React.CSSProperties => ({ ...base, padding:'10px 18px', background:'transparent', border:`1px solid ${c}`, color:c, fontSize:10, letterSpacing:'0.25em', fontWeight:700, cursor:'pointer', borderRadius:3 });
+  const btnFull = (c:string): React.CSSProperties => ({ ...base, padding:'12px 18px', background:c, border:`1px solid ${c}`, color:'#0D0D0D', fontSize:12, letterSpacing:'0.15em', fontWeight:700, cursor:'pointer', borderRadius:5 });
+  const btnOut  = (c:string): React.CSSProperties => ({ ...base, padding:'12px 18px', background:'transparent', border:`1px solid ${c}`, color:c, fontSize:12, letterSpacing:'0.15em', fontWeight:700, cursor:'pointer', borderRadius:5 });
 
   return (
     <div>
-      <div style={{ ...card, borderLeft:`3px solid ${C.red}`, marginBottom:18 }}>
-        <div style={{ ...lbl, color:C.red }}>THE BOSS — 150K FOLLOWERS</div>
-        <div style={{ display:'flex', justifyContent:'space-between', alignItems:'baseline', marginTop:8, marginBottom:8 }}>
-          <span style={{ ...display, fontSize:28, color:C.gold }}>{FOLLOWERS_NOW.toLocaleString()}</span>
-          <span style={{ ...mono, fontSize:12, color:C.muted }}>/ {FOLLOWER_GOAL.toLocaleString()}</span>
+      {/* BOSS FIGHT */}
+      <div style={{ ...card, borderLeft:`4px solid ${C.red}`, marginBottom:20 }}>
+        <div style={{ ...lbl, color:C.red }}>The boss — 150K followers</div>
+        <div style={{ display:'flex', justifyContent:'space-between', alignItems:'baseline', marginTop:10, marginBottom:10 }}>
+          <span style={{ ...display, fontSize:32, color:C.gold }}>{FOLLOWERS_NOW.toLocaleString()}</span>
+          <span style={{ ...mono, fontSize:14, color:C.muted }}>/ {FOLLOWER_GOAL.toLocaleString()}</span>
         </div>
-        <div style={{ background:'#0a0a0a', border:`1px solid ${C.border}`, borderRadius:3, height:18, overflow:'hidden' }}>
+        <div style={{ background:'#0a0a0a', border:`1px solid ${C.border}`, borderRadius:5, height:20, overflow:'hidden' }}>
           <div style={{ height:'100%', width:`${Math.max((FOLLOWERS_NOW/FOLLOWER_GOAL)*100,2)}%`, background:`linear-gradient(90deg,${C.red},${C.gold})` }}/>
         </div>
-        <div style={{ ...mono, fontSize:11, color:C.muted, marginTop:8 }}>
-          {Math.round((FOLLOWERS_NOW/FOLLOWER_GOAL)*100)}% chipped down. {(FOLLOWER_GOAL-FOLLOWERS_NOW).toLocaleString()} health left on the boss.
+        <div style={{ ...mono, fontSize:13, color:C.muted, marginTop:10, lineHeight:1.5 }}>
+          {Math.round((FOLLOWERS_NOW/FOLLOWER_GOAL)*100)}% chipped down — {(FOLLOWER_GOAL-FOLLOWERS_NOW).toLocaleString()} to go.
         </div>
       </div>
 
-      {/* CUSTOM GOALS — moved up, before vision board */}
-      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', margin:'18px 0 12px' }}>
-        <div style={{ ...lbl, marginBottom:0 }}>MY GOALS</div>
+      {/* MY GOALS HEADER */}
+      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', margin:'24px 0 14px' }}>
+        <div style={{ ...display, fontSize:20, color:C.text }}>My goals</div>
         <button onClick={() => { sfxTap(); setAdding(a => !a); }}
-          style={{ ...mono, background:'transparent', border:`1px solid ${adding?C.red:C.gold}`, borderRadius:3, color:adding?C.red:C.gold, fontSize:9, letterSpacing:'0.2em', padding:'5px 12px', cursor:'pointer' }}>
-          {adding ? '✕ CANCEL' : '+ ADD GOAL'}
+          style={{ ...mono, background: adding ? 'transparent' : C.gold, border:`1px solid ${adding?C.red:C.gold}`, borderRadius:5, color:adding?C.red:'#0D0D0D', fontSize:11, fontWeight:700, letterSpacing:'0.1em', padding:'8px 14px', cursor:'pointer' }}>
+          {adding ? 'CANCEL' : '+ ADD GOAL'}
         </button>
       </div>
 
       {adding && (
-        <div style={{ ...card, borderLeft:`3px solid ${C.gold}` }}>
-          <div style={{ ...lbl, color:C.gold, marginBottom:12 }}>NEW GOAL</div>
-          <div style={{ ...mono, fontSize:9, letterSpacing:'0.2em', color:C.muted, marginBottom:4 }}>GOAL</div>
+        <div style={{ ...card, borderLeft:`4px solid ${C.gold}`, background:C.cardLight }}>
+          <div style={{ ...lbl, color:C.gold, fontSize:13, marginBottom:16 }}>New goal</div>
+
+          <div style={{ ...mono, fontSize:11, color:C.muted, marginBottom:6, fontWeight:700 }}>WHAT'S THE GOAL</div>
           <input value={title} onChange={e=>setTitle(e.target.value)} placeholder="e.g. 150K Instagram followers"
-            style={{ ...mono, width:'100%', background:'#0a0a0a', border:`1px solid ${C.border}`, borderRadius:3, padding:'9px 11px', fontSize:13, color:C.text, outline:'none', marginBottom:12 }}/>
-          <div style={{ ...mono, fontSize:9, letterSpacing:'0.2em', color:C.muted, marginBottom:6 }}>TYPE</div>
-          <div style={{ display:'flex', gap:6, marginBottom:12 }}>
+            style={{ ...mono, width:'100%', background:'#0a0a0a', border:`1px solid ${C.border}`, borderRadius:5, padding:'12px 14px', fontSize:15, color:C.text, outline:'none', marginBottom:16 }}/>
+
+          <div style={{ ...mono, fontSize:11, color:C.muted, marginBottom:8, fontWeight:700 }}>TYPE</div>
+          <div style={{ display:'flex', gap:8, marginBottom:16 }}>
             {[['number','NUMBER TARGET'],['deadline','DEADLINE']].map(([k,l]) => (
               <button key={k} onClick={() => setType(k as any)}
-                style={{ ...mono, flex:1, padding:'8px 10px', borderRadius:3, border:`1px solid ${type===k?C.gold:C.border}`, background:type===k?C.gold:'transparent', color:type===k?'#0D0D0D':C.muted, fontSize:9, letterSpacing:'0.1em', fontWeight:700, cursor:'pointer' }}>{l}</button>
+                style={{ ...mono, flex:1, padding:'12px 10px', borderRadius:5, border:`1px solid ${type===k?C.gold:C.border}`, background:type===k?C.gold:'transparent', color:type===k?'#0D0D0D':C.muted, fontSize:11, letterSpacing:'0.08em', fontWeight:700, cursor:'pointer' }}>{l}</button>
             ))}
           </div>
+
           {type === 'number' && (
-            <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:8, marginBottom:12 }}>
+            <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:10, marginBottom:16 }}>
               {[['CURRENT',current,setCurrent,'0'],['TARGET',target,setTarget,'100'],['UNIT',unit,setUnit,'followers']].map(([l,v,fn,ph]) => (
                 <div key={String(l)}>
-                  <div style={{ ...mono, fontSize:9, letterSpacing:'0.2em', color:C.muted, marginBottom:4 }}>{String(l)}</div>
+                  <div style={{ ...mono, fontSize:10, color:C.muted, marginBottom:6, fontWeight:700 }}>{String(l)}</div>
                   <input value={String(v)} onChange={e=>(fn as any)(e.target.value)} placeholder={String(ph)} inputMode={String(l)!=='UNIT'?'decimal':'text'}
-                    style={{ ...mono, width:'100%', background:'#0a0a0a', border:`1px solid ${C.border}`, borderRadius:3, padding:'8px 10px', fontSize:12, color:C.text, outline:'none' }}/>
+                    style={{ ...mono, width:'100%', background:'#0a0a0a', border:`1px solid ${C.border}`, borderRadius:5, padding:'10px 12px', fontSize:13, color:C.text, outline:'none' }}/>
                 </div>
               ))}
             </div>
           )}
           {type === 'deadline' && (
-            <div style={{ marginBottom:12 }}>
-              <div style={{ ...mono, fontSize:9, letterSpacing:'0.2em', color:C.muted, marginBottom:4 }}>DEADLINE</div>
+            <div style={{ marginBottom:16 }}>
+              <div style={{ ...mono, fontSize:10, color:C.muted, marginBottom:6, fontWeight:700 }}>DEADLINE DATE</div>
               <input type="date" value={deadline} onChange={e=>setDeadline(e.target.value)}
-                style={{ ...mono, width:'100%', background:'#0a0a0a', border:`1px solid ${C.border}`, borderRadius:3, padding:'8px 10px', fontSize:12, color:C.text, outline:'none', marginBottom:8 }}/>
+                style={{ ...mono, width:'100%', background:'#0a0a0a', border:`1px solid ${C.border}`, borderRadius:5, padding:'10px 12px', fontSize:13, color:C.text, outline:'none' }}/>
             </div>
           )}
-          <div style={{ ...mono, fontSize:9, letterSpacing:'0.2em', color:C.muted, marginBottom:8 }}>COLOR</div>
-          <div style={{ display:'flex', gap:8, marginBottom:16 }}>
+
+          <div style={{ ...mono, fontSize:11, color:C.muted, marginBottom:10, fontWeight:700 }}>COLOR</div>
+          <div style={{ display:'flex', gap:10, marginBottom:20 }}>
             {COLORS.map(c => (
               <button key={c} onClick={() => setColor(c)}
-                style={{ width:28, height:28, borderRadius:'50%', background:c, border:`3px solid ${color===c?C.text:C.border}`, cursor:'pointer' }}/>
+                style={{ width:32, height:32, borderRadius:'50%', background:c, border:`3px solid ${color===c?'#fff':C.border}`, cursor:'pointer' }}/>
             ))}
           </div>
-          <button onClick={addGoal} style={{ ...btnFull(C.gold), width:'100%', padding:12 }}>ADD GOAL →</button>
+          <button onClick={addGoal} style={{ ...btnFull(C.gold), width:'100%', padding:14, fontSize:13 }}>CREATE GOAL</button>
         </div>
       )}
 
-      {loading && <div style={{ ...mono, fontSize:12, color:C.muted, padding:'16px 0' }}>Loading goals...</div>}
+      {loading && <div style={{ ...mono, fontSize:13, color:C.muted, padding:'20px 0' }}>Loading goals…</div>}
       {!loading && goals.length === 0 && !adding && (
-        <div style={{ ...card, textAlign:'center', opacity:0.5 }}>
-          <div style={{ ...mono, fontSize:12, color:C.dim }}>No goals yet. Tap + ADD GOAL to set your first target.</div>
+        <div style={{ ...card, textAlign:'center', padding:'28px 16px' }}>
+          <div style={{ ...mono, fontSize:13, color:C.muted }}>No goals yet. Tap + ADD GOAL above to set your first target.</div>
         </div>
       )}
 
       {goals.map(goal => {
         const pct = getPct(goal);
-        const statusColor = getStatusColor(pct, goal);
         const isComplete = pct >= 100;
+        const statusColor = isComplete ? C.green : goal.color;
         const isEditing = editing === goal.id;
         const isExpanded = expanded === goal.id;
         const d = goal.deadline ? daysUntil(goal.deadline) : null;
         const doneMilestones = goal.milestones.filter(m => m.done).length;
 
         return (
-          <div key={goal.id} style={{ ...card, borderLeft:`3px solid ${statusColor}`, background: isComplete ? '#0a1a0a' : C.card, padding:0, overflow:'hidden' }}>
-            {/* COMPACT HEADER — always visible, tap to expand */}
+          <div key={goal.id} style={{ ...base, background: isComplete ? '#0f1f12' : C.card, border:`1px solid ${isExpanded?statusColor:C.border}`, borderLeft:`4px solid ${statusColor}`, borderRadius:6, marginBottom:12, overflow:'hidden' }}>
+            {/* HEADER ROW */}
             <div onClick={() => { sfxTap(); setExpanded(isExpanded ? null : goal.id); }}
-              style={{ padding:14, cursor:'pointer' }}>
-              <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:8 }}>
-                <div style={{ ...display, fontSize:15, color:statusColor, lineHeight:1.2 }}>{goal.title}</div>
-                <div style={{ display:'flex', gap:8, alignItems:'center', flexShrink:0 }}>
-                  {isComplete && <span style={{ ...pixel, fontSize:7, color:C.green }}>DONE</span>}
-                  <span style={{ ...mono, fontSize:14, color:C.muted, transform: isExpanded?'rotate(90deg)':'none', display:'inline-block', transition:'transform 0.2s' }}>›</span>
+              style={{ padding:'16px 18px', cursor:'pointer' }}>
+              <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:12, gap:10 }}>
+                <div style={{ ...display, fontSize:17, color:C.text, lineHeight:1.25, flex:1 }}>{goal.title}</div>
+                <div style={{ display:'flex', gap:10, alignItems:'center', flexShrink:0 }}>
+                  {isComplete && <span style={{ ...mono, fontSize:10, fontWeight:700, color:C.green, letterSpacing:'0.1em' }}>DONE</span>}
+                  <span style={{ ...mono, fontSize:18, color:C.muted, display:'inline-block', transform: isExpanded?'rotate(90deg)':'none', transition:'transform 0.2s' }}>›</span>
                 </div>
               </div>
-              <div style={{ background:'#0a0a0a', border:`1px solid ${C.border}`, borderRadius:3, height:12, overflow:'hidden', marginBottom:6 }}>
-                <div style={{ height:'100%', width:`${pct}%`, background: isComplete ? C.green : `linear-gradient(90deg,${statusColor}88,${statusColor})`, transition:'width 0.4s' }}/>
+              <div style={{ background:'#0a0a0a', border:`1px solid ${C.border}`, borderRadius:5, height:16, overflow:'hidden', marginBottom:10 }}>
+                <div style={{ height:'100%', width:`${pct}%`, background: isComplete ? C.green : statusColor, transition:'width 0.4s' }}/>
               </div>
-              <div style={{ display:'flex', justifyContent:'space-between', ...mono, fontSize:10, color:C.muted }}>
-                <span>
+              <div style={{ display:'flex', justifyContent:'space-between', alignItems:'baseline', flexWrap:'wrap', gap:6 }}>
+                <span style={{ ...mono, fontSize:13, color:C.text, fontWeight:700 }}>
                   {goal.type === 'number'
-                    ? `${goal.current.toLocaleString()}${goal.unit?' '+goal.unit:''} / ${goal.target.toLocaleString()}${goal.unit?' '+goal.unit:''}`
+                    ? `${goal.current.toLocaleString()}${goal.unit?' '+goal.unit:''} of ${goal.target.toLocaleString()}${goal.unit?' '+goal.unit:''}`
                     : (d===null?'No deadline': d<0?`Passed ${Math.abs(d)}d ago`: d===0?'TODAY': `${d} days left`)}
                 </span>
-                <span>{pct}%{goal.milestones.length>0?` · ${doneMilestones}/${goal.milestones.length} milestones`:''}</span>
+                <span style={{ ...mono, fontSize:13, color:statusColor, fontWeight:700 }}>
+                  {pct}%{goal.milestones.length>0?` · ${doneMilestones}/${goal.milestones.length} steps`:''}
+                </span>
               </div>
             </div>
 
-            {/* EXPANDED DETAIL */}
+            {/* EXPANDED */}
             {isExpanded && (
-              <div style={{ padding:'0 14px 14px', borderTop:`1px solid ${C.border}` }}>
-                {/* update current value */}
+              <div style={{ padding:'4px 18px 18px', borderTop:`1px solid ${C.border}`, background:'#0d0d0d' }}>
                 {goal.type === 'number' && (
-                  <div style={{ display:'flex', gap:8, alignItems:'center', margin:'12px 0' }}>
+                  <div style={{ display:'flex', gap:10, alignItems:'center', margin:'16px 0' }}>
                     {!isEditing ? (
                       <button onClick={(e) => { e.stopPropagation(); setEditing(goal.id); setEditVal(String(goal.current)); }}
-                        style={{ ...btnOut(goal.color), flex:1, padding:'8px' }}>UPDATE PROGRESS</button>
+                        style={{ ...btnOut(goal.color), flex:1, padding:'12px' }}>UPDATE PROGRESS</button>
                     ) : (
                       <>
                         <input autoFocus value={editVal} onChange={e=>setEditVal(e.target.value)}
                           onKeyDown={e=>{ if(e.key==='Enter') updateCurrent(goal.id,editVal); if(e.key==='Escape'){setEditing(null);setEditVal('');} }}
                           onClick={e=>e.stopPropagation()}
                           inputMode="decimal"
-                          style={{ ...mono, flex:1, background:'#0a0a0a', border:`1px solid ${goal.color}`, borderRadius:3, padding:'8px 10px', fontSize:13, color:goal.color, outline:'none' }}/>
+                          style={{ ...mono, flex:1, background:'#0a0a0a', border:`1px solid ${goal.color}`, borderRadius:5, padding:'12px 14px', fontSize:14, color:goal.color, outline:'none' }}/>
                         <button onClick={(e) => { e.stopPropagation(); updateCurrent(goal.id, editVal); }}
-                          style={{ ...mono, background:goal.color, border:'none', borderRadius:3, padding:'8px 14px', fontSize:11, fontWeight:700, color:'#0D0D0D', cursor:'pointer' }}>SET</button>
+                          style={{ ...mono, background:goal.color, border:'none', borderRadius:5, padding:'12px 18px', fontSize:12, fontWeight:700, color:'#0D0D0D', cursor:'pointer' }}>SET</button>
                       </>
                     )}
                   </div>
                 )}
 
-                {/* WORK-BACK PLAN — milestones */}
-                <div style={{ ...mono, fontSize:9, letterSpacing:'0.2em', color:C.muted, margin:'14px 0 10px' }}>WORK-BACK PLAN</div>
+                <div style={{ ...mono, fontSize:11, letterSpacing:'0.15em', color:C.muted, fontWeight:700, margin:'18px 0 12px' }}>WORK-BACK PLAN</div>
+
+                {goal.milestones.length === 0 && (
+                  <div style={{ ...mono, fontSize:12, color:C.muted, fontStyle:'italic', padding:'4px 0 14px', lineHeight:1.5 }}>
+                    Break this goal into steps — add your first checkpoint below.
+                  </div>
+                )}
+
                 {goal.milestones.map(m => (
                   <div key={m.id} onClick={(e) => { e.stopPropagation(); toggleMilestone(goal.id, m.id); }}
-                    style={{ display:'flex', alignItems:'center', gap:10, padding:'8px 0', borderBottom:`1px solid ${C.border}`, cursor:'pointer' }}>
-                    <div style={{ width:20, height:20, borderRadius:'50%', border:`2px solid ${m.done?C.green:C.dim}`, background:m.done?C.green:'transparent', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
-                      {m.done && <span style={{ fontSize:10, color:'#0D0D0D', fontWeight:900 }}>✓</span>}
+                    style={{ display:'flex', alignItems:'center', gap:12, padding:'12px 0', borderBottom:`1px solid ${C.border}`, cursor:'pointer' }}>
+                    <div style={{ width:24, height:24, borderRadius:'50%', border:`2px solid ${m.done?C.green:C.muted}`, background:m.done?C.green:'transparent', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
+                      {m.done && <span style={{ fontSize:12, color:'#0D0D0D', fontWeight:900 }}>✓</span>}
                     </div>
-                    <span style={{ ...mono, fontSize:12, color:m.done?C.muted:C.text, textDecoration:m.done?'line-through':'none', flex:1 }}>{m.label}</span>
-                    <span style={{ ...mono, fontSize:11, color:C.dim }}>{m.value.toLocaleString()}{goal.unit?' '+goal.unit:''}</span>
+                    <span style={{ ...mono, fontSize:13, color:m.done?C.muted:C.text, textDecoration:m.done?'line-through':'none', flex:1, lineHeight:1.4 }}>{m.label}</span>
+                    <span style={{ ...mono, fontSize:12, color:C.muted, fontWeight:700 }}>{m.value.toLocaleString()}{goal.unit?' '+goal.unit:''}</span>
                     <button onClick={(e) => { e.stopPropagation(); removeMilestone(goal.id, m.id); }}
-                      style={{ ...mono, background:'transparent', border:'none', color:C.dim, fontSize:14, cursor:'pointer' }}>×</button>
+                      style={{ ...mono, background:'transparent', border:'none', color:C.dim, fontSize:18, cursor:'pointer', padding:0 }}>×</button>
                   </div>
                 ))}
-                {goal.milestones.length === 0 && <div style={{ ...mono, fontSize:11, color:C.dim, fontStyle:'italic', padding:'4px 0 10px' }}>No checkpoints yet — break this goal into steps below.</div>}
 
-                <div style={{ display:'flex', gap:6, marginTop:10 }} onClick={e=>e.stopPropagation()}>
-                  <input value={msLabel} onChange={e=>setMsLabel(e.target.value)} placeholder="Checkpoint (e.g. Reach 25K)"
-                    style={{ ...mono, flex:2, background:'#0a0a0a', border:`1px solid ${C.border}`, borderRadius:3, padding:'7px 9px', fontSize:11, color:C.text, outline:'none' }}/>
+                <div style={{ display:'flex', gap:8, marginTop:14 }} onClick={e=>e.stopPropagation()}>
+                  <input value={msLabel} onChange={e=>setMsLabel(e.target.value)} placeholder="Checkpoint, e.g. Reach 25K"
+                    style={{ ...mono, flex:2, background:'#0a0a0a', border:`1px solid ${C.border}`, borderRadius:5, padding:'10px 12px', fontSize:12, color:C.text, outline:'none' }}/>
                   <input value={msValue} onChange={e=>setMsValue(e.target.value)} placeholder="Value" inputMode="decimal"
-                    style={{ ...mono, flex:1, background:'#0a0a0a', border:`1px solid ${C.border}`, borderRadius:3, padding:'7px 9px', fontSize:11, color:C.text, outline:'none' }}/>
-                  <button onClick={() => addMilestone(goal.id)} style={{ ...mono, background:goal.color, border:'none', borderRadius:3, padding:'7px 12px', fontSize:10, fontWeight:700, color:'#0D0D0D', cursor:'pointer' }}>+</button>
+                    style={{ ...mono, flex:1, background:'#0a0a0a', border:`1px solid ${C.border}`, borderRadius:5, padding:'10px 12px', fontSize:12, color:C.text, outline:'none' }}/>
+                  <button onClick={() => addMilestone(goal.id)} style={{ ...mono, background:goal.color, border:'none', borderRadius:5, padding:'10px 16px', fontSize:13, fontWeight:700, color:'#0D0D0D', cursor:'pointer' }}>+</button>
                 </div>
 
                 <button onClick={(e) => { e.stopPropagation(); deleteGoal(goal.id); }}
-                  style={{ ...mono, background:'transparent', border:'none', color:C.dim, fontSize:10, letterSpacing:'0.1em', cursor:'pointer', marginTop:16, padding:0, textDecoration:'underline' }}>DELETE GOAL</button>
+                  style={{ ...mono, background:'transparent', border:'none', color:C.muted, fontSize:11, letterSpacing:'0.05em', cursor:'pointer', marginTop:20, padding:0, textDecoration:'underline' }}>Delete this goal</button>
               </div>
             )}
           </div>
         );
       })}
 
-      {/* VISION BOARD — moved below custom goals */}
-      <div style={{ ...card, borderLeft:`3px solid ${C.gold}`, marginTop:24 }}>
-        <div style={{ ...lbl, color:C.gold }}>THE MISSION</div>
-        <div style={{ ...mono, fontSize:13, color:C.muted, lineHeight:1.7, fontStyle:'italic' }}>"Protecting each other because the government won't."</div>
+      {/* VISION BOARD */}
+      <div style={{ ...card, borderLeft:`4px solid ${C.gold}`, marginTop:28 }}>
+        <div style={{ ...lbl, color:C.gold }}>The mission</div>
+        <div style={{ ...mono, fontSize:14, color:C.muted, lineHeight:1.7, fontStyle:'italic' }}>"Protecting each other because the government won't."</div>
       </div>
       {VISION.map((v,i) => (
-        <div key={i} style={{ ...card, borderLeft:`3px solid ${v.color}` }}>
+        <div key={i} style={{ ...card, borderLeft:`4px solid ${v.color}` }}>
           <div style={{ ...lbl, color:v.color }}>{v.year}</div>
           {v.items.map((item,j) => (
-            <div key={j} style={{ display:'flex', gap:8, marginBottom:6 }}>
-              <span style={{ color:v.color, flexShrink:0 }}>→</span>
-              <span style={{ ...mono, fontSize:13, color:C.muted, lineHeight:1.5 }}>{item}</span>
+            <div key={j} style={{ display:'flex', gap:10, marginBottom:8, alignItems:'flex-start' }}>
+              <span style={{ color:v.color, flexShrink:0, fontSize:14 }}>→</span>
+              <span style={{ ...mono, fontSize:14, color:C.text, lineHeight:1.5 }}>{item}</span>
             </div>
           ))}
         </div>
