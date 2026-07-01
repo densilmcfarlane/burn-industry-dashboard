@@ -194,13 +194,31 @@ export default function Dashboard() {
   const todayShow = TOUR.find(s=>s.date===today&&s.city!=='OFF');
   const nextShows = TOUR.filter(s=>s.date>=today&&s.city!=='OFF').slice(0,3);
 
-  const masterSorted = [...db.tasks].sort((a:any,b:any)=>(b.priority-a.priority)||(a.created_at<b.created_at?-1:1));
+  // ── CATEGORY-AWARE BATTLE SYSTEM ──
+  const BATTLE_CATEGORIES = [
+    { key:'MONEY', color:C.gold,   label:'MONEY'  },
+    { key:'BUILD', color:C.orange, label:'BUILD'  },
+    { key:'GROW',  color:C.blue,   label:'GROW'   },
+  ];
+
   const donIds = Object.keys(db.dailyState.battle_done||{}).filter(k=>(db.dailyState.battle_done||{})[k]);
-  const slotIds = (db.dailyState.battle_slots||[null,null,null]).filter(Boolean);
-  const available = masterSorted.filter((t:any)=>!slotIds.includes(t.id)&&!donIds.includes(t.id));
-  let fi=0;
-  const filledSlots=(db.dailyState.battle_slots||[null,null,null]).map((id:any)=>{if(id&&db.tasks.find((t:any)=>t.id===id))return id;const n=available[fi++];return n?n.id:null;});
-  const battleTasks=filledSlots.map((id:any)=>db.tasks.find((t:any)=>t.id===id)||null);
+  const swappedIds: string[] = db.dailyState.swapped_ids || [];
+  const explicitSlots: (string|null)[] = db.dailyState.battle_slots || [null,null,null];
+
+  // For each slot, use explicit assignment or auto-fill from that slot's category
+  const filledSlots = BATTLE_CATEGORIES.map((cat, i) => {
+    const explicit = explicitSlots[i];
+    if (explicit && db.tasks.find((t:any) => t.id === explicit && !(db.dailyState.battle_done||{})[t.id])) return explicit;
+    // auto-fill: top priority task from this category not done, not swapped, not in another slot
+    const otherSlots = explicitSlots.filter((_,j)=>j!==i).filter(Boolean);
+    const candidate = [...db.tasks]
+      .filter((t:any) => t.category === cat.key && !donIds.includes(t.id) && !swappedIds.includes(t.id) && !otherSlots.includes(t.id))
+      .sort((a:any,b:any) => (b.priority-a.priority)||(a.created_at<b.created_at?-1:1))[0];
+    return candidate ? candidate.id : null;
+  });
+
+  const battleTasks = filledSlots.map((id:any) => db.tasks.find((t:any)=>t.id===id)||null);
+  const masterSorted = [...db.tasks].sort((a:any,b:any)=>(b.priority-a.priority)||(a.created_at<b.created_at?-1:1));
   const battleEnergy=db.tasks.filter((t:any)=>(db.dailyState.battle_done||{})[t.id]).reduce((a:number,t:any)=>a+(t.energy||0),0);
   const unplannedEnergy=(db.dailyState.unplanned||[]).reduce((a:number,u:any)=>a+(u.energy||0),0);
   const energyBanked=battleEnergy+unplannedEnergy;
@@ -383,26 +401,66 @@ export default function Dashboard() {
 
           <div style={{...card,borderLeft:`3px solid ${C.orange}`}}>
             <div style={{...lbl,color:C.orange}}>TODAY'S BATTLES</div>
-            <div style={{...mono,fontSize:11,color:C.muted,lineHeight:1.6}}>The 3 things you're fighting today. Top priority auto-fills. Swap one back if it's not the move.</div>
+            <div style={{...mono,fontSize:11,color:C.muted,lineHeight:1.6}}>One from each front. Swap to get a different task from that category. Add a defiance to any slot.</div>
           </div>
-          {battleTasks.map((task:any,i:number)=>task?(
-            <div key={task.id} style={{...card,border:`1px solid ${C.border}`}}>
-              <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',gap:10}}>
-                <div style={{display:'flex',gap:12,alignItems:'flex-start',flex:1}}>
-                  <div style={chk(false,C.orange)} onClick={()=>{snd(sfxCheck);const bd={...db.dailyState.battle_done,[task.id]:true};const bs=(db.dailyState.battle_slots||[null,null,null]).map((x:any)=>x===task.id?null:x);db.saveDailyState({...db.dailyState,battle_done:bd,battle_slots:bs});}}/>
-                  <div style={{flex:1}}>
-                    <div style={{...mono,fontSize:14,color:C.text,lineHeight:1.5}}>{task.text}</div>
-                    <div style={{...mono,fontSize:10,color:C.muted,marginTop:5,letterSpacing:'0.1em'}}>{'★'.repeat(task.priority)} · {task.energy} {task.energy===1?'pt':'pts'}</div>
+
+          {battleTasks.map((task:any,i:number)=>{
+            const cat = BATTLE_CATEGORIES[i];
+            return task ? (
+              <div key={task.id} style={{...card,border:`1px solid ${cat.color}33`,borderLeft:`3px solid ${cat.color}`}}>
+                <div style={{...mono,fontSize:9,letterSpacing:'0.25em',color:cat.color,marginBottom:8,fontWeight:700}}>{cat.label}</div>
+                <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',gap:10}}>
+                  <div style={{display:'flex',gap:12,alignItems:'flex-start',flex:1}}>
+                    <div style={chk(false,cat.color)} onClick={()=>{
+                      snd(sfxCheck);
+                      const bd={...db.dailyState.battle_done,[task.id]:true};
+                      const bs=[...explicitSlots];
+                      bs[i]=null;
+                      db.saveDailyState({...db.dailyState,battle_done:bd,battle_slots:bs});
+                    }}/>
+                    <div style={{flex:1}}>
+                      <div style={{...mono,fontSize:14,color:C.text,lineHeight:1.5}}>{task.text}</div>
+                      <div style={{...mono,fontSize:10,color:C.muted,marginTop:5}}>{'★'.repeat(task.priority||1)} · {task.energy} {task.energy===1?'pt':'pts'}{task.category?` · ${task.category}`:''}</div>
+                    </div>
                   </div>
+                  <button onClick={()=>{
+                    snd(sfxTap);
+                    // Add to swapped list so it doesn't auto-refill today
+                    const sw=[...(db.dailyState.swapped_ids||[]),task.id];
+                    const bs=[...explicitSlots];
+                    bs[i]=null;
+                    db.saveDailyState({...db.dailyState,battle_slots:bs,swapped_ids:sw});
+                  }} style={{...mono,background:'transparent',border:`1px solid ${C.border}`,borderRadius:3,color:C.muted,fontSize:9,letterSpacing:'0.1em',padding:'5px 8px',cursor:'pointer',whiteSpace:'nowrap'}}>SWAP ↩</button>
                 </div>
-                <button onClick={()=>{snd(sfxTap);const bs=(db.dailyState.battle_slots||[null,null,null]).map((x:any)=>x===task.id?null:x);db.saveDailyState({...db.dailyState,battle_slots:bs});}} style={{...mono,background:'transparent',border:`1px solid ${C.border}`,borderRadius:3,color:C.muted,fontSize:9,letterSpacing:'0.1em',padding:'5px 8px',cursor:'pointer',whiteSpace:'nowrap'}}>SWAP ↩</button>
               </div>
+            ) : (
+              <div key={'e'+i} style={{...card,border:`1px dashed ${cat.color}44`,borderLeft:`3px solid ${cat.color}44`}}>
+                <div style={{...mono,fontSize:9,letterSpacing:'0.25em',color:cat.color,marginBottom:6,opacity:0.5}}>{cat.label}</div>
+                <div style={{...mono,fontSize:11,color:C.dim}}>No {cat.label} tasks available — add one below</div>
+              </div>
+            );
+          })}
+
+          {/* DEFIANCE BATTLES */}
+          <div style={{...card,borderLeft:`3px solid ${C.red}`,marginTop:8,background:'#0d0000'}}>
+            <div style={{...lbl,color:C.red,marginBottom:4}}>DEFIANCE BATTLES</div>
+            <div style={{...mono,fontSize:11,color:C.muted,lineHeight:1.6,marginBottom:12}}>Add any accusation to today's fight. Defeat it through action.</div>
+            <div style={{display:'flex',flexWrap:'wrap' as const,gap:6}}>
+              {DEFIANCE_STATEMENTS.map((stmt,i)=>{
+                const isDone = defianceDone[i];
+                return(
+                  <button key={i} onClick={()=>{snd(sfxCheck);setDefianceDone(p=>({...p,[i]:!p[i]}));}}
+                    style={{...mono,padding:'6px 12px',borderRadius:3,border:`1px solid ${isDone?C.red:C.border}`,background:isDone?C.red:'transparent',color:isDone?'#fff':C.muted,fontSize:10,letterSpacing:'0.05em',cursor:'pointer',textDecoration:isDone?'line-through':'none'}}>
+                    {isDone?'✗ ':''}{stmt.replace('You ','').replace('.','').slice(0,40)}{stmt.length>40?'…':''}
+                  </button>
+                );
+              })}
             </div>
-          ):(
-            <div key={'e'+i} style={{...card,border:`1px dashed ${C.border}`,textAlign:'center'}}>
-              <div style={{...mono,fontSize:11,color:C.dim}}>Empty slot — add tasks to the master list below</div>
+            <div style={{...mono,fontSize:10,color:C.muted,marginTop:12}}>
+              {Object.values(defianceDone).filter(Boolean).length}/{DEFIANCE_STATEMENTS.length} defied
+              {Object.values(defianceDone).filter(Boolean).length===DEFIANCE_STATEMENTS.length&&<span style={{color:C.red,marginLeft:6,fontWeight:700}}>BRAIN CALLOUSED.</span>}
             </div>
-          ))}
+          </div>
 
           <div style={{...card,borderLeft:`3px solid ${C.red}`,marginTop:24}}>
             <div style={{...lbl,color:C.red}}>LOG UNPLANNED WORK</div>
@@ -464,7 +522,7 @@ export default function Dashboard() {
                     </div>
                   </div>
                   <div style={{display:'flex',gap:6,alignItems:'center'}}>
-                    {!inBattle&&<button onClick={()=>{snd(sfxTap);const bs=[...(db.dailyState.battle_slots||[null,null,null])];const oi=bs.findIndex((x:any)=>!x||!db.tasks.find((t:any)=>t.id===x));bs[oi===-1?0:oi]=task.id;db.saveDailyState({...db.dailyState,battle_slots:bs});}} style={{...mono,background:'transparent',border:`1px solid ${C.orange}`,borderRadius:3,color:C.orange,fontSize:9,letterSpacing:'0.1em',padding:'5px 8px',cursor:'pointer',whiteSpace:'nowrap'}}>→ BATTLE</button>}
+                    {!inBattle&&<button onClick={()=>{snd(sfxTap);const bs=[...explicitSlots];const cat=(task as any).category||'ADMIN';const catIdx=BATTLE_CATEGORIES.findIndex(c=>c.key===cat);const slotIdx=catIdx>=0?catIdx:bs.findIndex((x:any)=>!x||!db.tasks.find((t:any)=>t.id===x));bs[slotIdx===-1?0:slotIdx]=task.id;const sw=(db.dailyState.swapped_ids||[]).filter((id:string)=>id!==task.id);db.saveDailyState({...db.dailyState,battle_slots:bs,swapped_ids:sw});}} style={{...mono,background:'transparent',border:`1px solid ${C.orange}`,borderRadius:3,color:C.orange,fontSize:9,letterSpacing:'0.1em',padding:'5px 8px',cursor:'pointer',whiteSpace:'nowrap'}}>→ BATTLE</button>}
                     <button onClick={()=>db.removeTask(task.id)} style={{...mono,background:'transparent',border:'none',color:C.dim,fontSize:16,cursor:'pointer'}}>×</button>
                   </div>
                 </div>
