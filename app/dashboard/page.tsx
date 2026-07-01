@@ -95,6 +95,29 @@ const CRISIS_STEPS = [
   { id:"c3", title:"Write one sentence", desc:"Whatever is loudest. Get it out of your head." },
   { id:"c4", title:"If ideations come", desc:"Text 988. Both are here.", crisis:true },
 ];
+const AFFIRMATIONS = [
+  "Money comes to me easily because I no longer reject wealth internally.",
+  "I am safe being powerful, visible, and successful.",
+  "I release the identity that romanticizes struggle.",
+  "I become the kind of person that naturally attracts opportunities, wealth, and expansion.",
+  "My reality is reorganizing itself in my fucking favour.",
+  "The version of me that has everything I want already exists.",
+  "Every day I become more emotionally aligned with him.",
+  "I expect miracles.",
+  "I expect abundance.",
+  "I expect my life to change.",
+  "I know this is my identity.",
+];
+const DEFIANCE_STATEMENTS = [
+  "You are lazy.",
+  "You are afraid to reach out to the sync agents.",
+  "You are afraid to network.",
+  "You are afraid to reach out to The Orchard.",
+  "You are afraid to get your degree.",
+  "You are afraid to truly learn how to be great at music.",
+  "You can't complete an idea.",
+  "You are too dumb to learn strategy, which is why you make the same mistakes.",
+];
 const VISION = [
   { year:"NOW → 18 MONTHS", color:"#ffd732", items:["Sell out every show","100K across TikTok / IG / YouTube","Record written and made","Mando sync conversation started","Team becomes affordable"] },
   { year:"YEAR 3", color:"#ff6b35", items:["Larger than Turnstile","Large theatre touring internationally","Big features + major syncs","Record out and working","Burn Industry label seeded with 5 artists"] },
@@ -140,6 +163,9 @@ export default function Dashboard() {
   const [shake,setShake]   = useState(false);
   const [showCrisis,setShowCrisis] = useState(false);
   const [crisisDone,setCrisisDone] = useState<Record<string,boolean>>({});
+  const [affirmIdx,setAffirmIdx] = useState(0);
+  const [affirmDone,setAffirmDone] = useState(false);
+  const [defianceDone,setDefianceDone] = useState<Record<number,boolean>>({});
   const [newTask,setNewTask]   = useState('');
   const [newEnergy,setNewEnergy] = useState(2);
   const [newPriority,setNewPriority] = useState(2);
@@ -466,6 +492,20 @@ export default function Dashboard() {
         </>}
 
         {room==='routines'&&<>
+          {/* ── YESTERDAY'S DEFIANCE (morning reckoning) ── */}
+          {Object.values(defianceDone).some(v=>!v) && Object.keys(defianceDone).length > 0 && (
+            <div style={{...card,borderLeft:`3px solid ${C.red}`,background:'#0d0000',marginBottom:20}}>
+              <div style={{...lbl,color:C.red,marginBottom:4}}>UNFINISHED DEFIANCE</div>
+              <div style={{...mono,fontSize:12,color:C.muted,lineHeight:1.6,marginBottom:12}}>You didn't defy these last night. Face them now before you do anything else.</div>
+              {DEFIANCE_STATEMENTS.map((stmt,i)=>!defianceDone[i]?(
+                <div key={i} style={{display:'flex',gap:12,alignItems:'center',padding:'10px 0',borderBottom:`1px solid ${C.border}`}}>
+                  <div style={{...mono,fontSize:13,color:C.text,flex:1,lineHeight:1.5}}>{stmt}</div>
+                  <button onClick={()=>{snd(sfxCheck);setDefianceDone(p=>({...p,[i]:true}));}}
+                    style={{...mono,background:C.red,border:'none',borderRadius:3,color:'#fff',fontSize:9,letterSpacing:'0.2em',fontWeight:700,padding:'8px 14px',cursor:'pointer',flexShrink:0}}>DEFY NOW</button>
+                </div>
+              ):null)}
+            </div>
+          )}
           <div style={{...card,borderLeft:`3px solid ${C.gold}`}}>
             <div style={{...lbl,color:C.gold}}>MORNING PROTOCOL</div>
             <div style={{...mono,fontSize:12,color:C.muted}}>Starts when you start moving. Not at a clock time.</div>
@@ -528,6 +568,58 @@ export default function Dashboard() {
               ))}
             </div>
           )}
+
+          {/* ── NIGHT AFFIRMATIONS ── */}
+          <div style={{...card,borderLeft:`3px solid ${C.gold}`,marginTop:24,background:'#0d0d00'}}>
+            <div style={{...lbl,color:C.gold,marginBottom:12}}>NIGHT AFFIRMATIONS</div>
+            {!affirmDone ? (
+              <div>
+                <div style={{...mono,fontSize:11,color:C.muted,marginBottom:16,letterSpacing:'0.1em'}}>{affirmIdx+1} of {AFFIRMATIONS.length}</div>
+                <div style={{...display,fontSize:'clamp(18px,5vw,28px)',color:C.gold,lineHeight:1.3,marginBottom:24,letterSpacing:'0.01em'}}>
+                  {AFFIRMATIONS[affirmIdx]}
+                </div>
+                <div style={{display:'flex',gap:10}}>
+                  {affirmIdx>0&&<button onClick={()=>setAffirmIdx(i=>i-1)} style={{...mono,background:'transparent',border:`1px solid ${C.border}`,borderRadius:3,color:C.muted,fontSize:11,padding:'10px 16px',cursor:'pointer'}}>← BACK</button>}
+                  {affirmIdx<AFFIRMATIONS.length-1 ? (
+                    <button onClick={()=>{snd(sfxCheck);setAffirmIdx(i=>i+1);}} style={{...mono,background:C.gold,border:'none',borderRadius:3,color:'#0D0D0D',fontSize:11,fontWeight:700,letterSpacing:'0.15em',padding:'10px 20px',cursor:'pointer',flex:1}}>I CLAIM THIS →</button>
+                  ) : (
+                    <button onClick={()=>{snd(sfxKO);setAffirmDone(true);}} style={{...mono,background:C.gold,border:'none',borderRadius:3,color:'#0D0D0D',fontSize:11,fontWeight:700,letterSpacing:'0.15em',padding:'10px 20px',cursor:'pointer',flex:1}}>I AM THIS. DONE. ✓</button>
+                  )}
+                </div>
+              </div>
+            ) : (
+              <div style={{textAlign:'center',padding:'8px 0'}}>
+                <div style={{...pixel,fontSize:11,color:C.gold,marginBottom:8}}>CLAIMED.</div>
+                <div style={{...mono,fontSize:12,color:C.muted}}>You spoke it. Now sleep as him.</div>
+                <button onClick={()=>{setAffirmDone(false);setAffirmIdx(0);}} style={{...mono,background:'transparent',border:'none',color:C.dim,fontSize:10,cursor:'pointer',marginTop:12,textDecoration:'underline'}}>Read again</button>
+              </div>
+            )}
+          </div>
+
+          {/* ── DEFIANCE ── */}
+          <div style={{...card,borderLeft:`3px solid ${C.red}`,marginTop:12,background:'#0d0000'}}>
+            <div style={{...lbl,color:C.red,marginBottom:4}}>DEFIANCE</div>
+            <div style={{...mono,fontSize:12,color:C.muted,lineHeight:1.6,marginBottom:16}}>The voice speaks. Did you defy it today?</div>
+            {DEFIANCE_STATEMENTS.map((stmt,i)=>(
+              <div key={i} style={{display:'flex',gap:12,alignItems:'flex-start',padding:'14px 0',borderBottom:`1px solid ${C.border}`}}>
+                <div onClick={()=>{if(!defianceDone[i])snd(sfxCheck);setDefianceDone(p=>({...p,[i]:!p[i]}));}}
+                  style={{width:30,height:30,borderRadius:'50%',border:`2px solid ${defianceDone[i]?C.red:C.dim}`,background:defianceDone[i]?C.red:'transparent',display:'flex',alignItems:'center',justifyContent:'center',cursor:'pointer',flexShrink:0,transition:'all 0.2s'}}>
+                  {defianceDone[i]&&<span style={{fontSize:13,color:'#fff',fontWeight:900}}>✗</span>}
+                </div>
+                <div style={{flex:1}}>
+                  <div style={{...mono,fontSize:13,color:defianceDone[i]?C.muted:C.text,textDecoration:defianceDone[i]?'line-through':'none',lineHeight:1.5}}>{stmt}</div>
+                  {!defianceDone[i]&&(
+                    <button onClick={()=>{snd(sfxCheck);setDefianceDone(p=>({...p,[i]:true}));}}
+                      style={{...mono,marginTop:8,background:C.red,border:'none',borderRadius:3,color:'#fff',fontSize:9,letterSpacing:'0.2em',fontWeight:700,padding:'6px 14px',cursor:'pointer'}}>DEFIED TODAY</button>
+                  )}
+                </div>
+              </div>
+            ))}
+            <div style={{...mono,fontSize:11,color:C.muted,marginTop:14,lineHeight:1.6,fontStyle:'italic'}}>
+              {Object.values(defianceDone).filter(Boolean).length} of {DEFIANCE_STATEMENTS.length} defied today.
+              {Object.values(defianceDone).filter(Boolean).length===DEFIANCE_STATEMENTS.length&&<span style={{color:C.red,fontStyle:'normal',marginLeft:6,fontWeight:700}}>ALL DEFIED. BRAIN CALLOUSED.</span>}
+            </div>
+          </div>
         </>}
 
         {room==='journal'&&<>
