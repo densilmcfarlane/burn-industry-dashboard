@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 
 const C = { bg:'#0D0D0D', card:'#111', border:'#1e1e1e', gold:'#FFD60A', orange:'#ff6b35', red:'#D91F26', blue:'#7eb8f7', text:'#F2F2F2', muted:'#666', dim:'#2a2a2a', green:'#4ade80' };
 const mono = { fontFamily:"'Space Mono',monospace" };
@@ -12,18 +12,17 @@ function sfxCheck() { try { const a=new(window.AudioContext||window.webkitAudioC
 function sfxKO()    { [523,659,784,1046].forEach((f,i)=>setTimeout(()=>{ try{const a=new(window.AudioContext||window.webkitAudioContext)(),o=a.createOscillator(),g=a.createGain();o.type='square';o.frequency.value=f;g.gain.setValueAtTime(0.14,a.currentTime);g.gain.exponentialRampToValueAtTime(0.0001,a.currentTime+0.16);o.connect(g);g.connect(a.destination);o.start();o.stop(a.currentTime+0.16);}catch(e){}},i*90)); }
 
 const PAY_ANCHOR    = new Date(2026, 5, 19);
-const TODAY_FIXED   = new Date(2026, 5, 24);
 const TARGET_DATE   = new Date(2027, 7,  1);
 const TOTAL_ORIGINAL= 34270;
 const MS_BIWEEK     = 14 * 24 * 60 * 60 * 1000;
 
-const DEBT_DEFAULTS = [
-  { id:'td',       name:'TD First Class ···6932',  bal:21854, rate:11.00,  min:228, due:6   },
-  { id:'amex',     name:'Amex Cobalt ···1700',     bal:4296,  rate:21.99,  min:89,  due:18  },
-  { id:'scotia',   name:'Scotiabank Visa ···3026', bal:2906,  rate:13.99,  min:42,  due:6   },
-  { id:'tang_loc', name:'Tangerine LOC ···6380',   bal:2713,  rate:9.45,   min:76,  due:21, autopay:true },
-  { id:'tang_mc',  name:'Tangerine MC ···6704',    bal:2501,  rate:20.95,  min:52,  due:24  },
-];
+const DEBT_META = {
+  td:       { rate:11.00,  min:228, due:6,  autopay:false },
+  amex:     { rate:21.99,  min:89,  due:18, autopay:false },
+  scotia:   { rate:13.99,  min:42,  due:6,  autopay:false },
+  tang_loc: { rate:9.45,   min:76,  due:21, autopay:true  },
+  tang_mc:  { rate:20.95,  min:52,  due:24, autopay:false },
+};
 
 const INCOME_TYPES = [
   { id:'paycheck',  label:'PAYCHECK',      default:2350  },
@@ -33,18 +32,10 @@ const INCOME_TYPES = [
   { id:'other',     label:'OTHER',         default:0     },
 ];
 
-function loadState() {
-  try {
-    const s = JSON.parse(localStorage.getItem('bi_money') || 'null');
-    if (s && s.debts) return s;
-  } catch(e) {}
-  return { debts: DEBT_DEFAULTS, spending: [], incomeLog: [] };
-}
-
 function allocate(amount, phase, debts) {
   let remaining = amount;
   const steps = [];
-  const debt = (id) => debts.find(d => d.id === id);
+  const debt = (id) => debts.find(d => (d.debt_id || d.id) === id);
 
   if (phase === 1) {
     const mins = [
@@ -56,7 +47,8 @@ function allocate(amount, phase, debts) {
     ];
     for (const a of mins) {
       if (remaining <= 0) break;
-      const cap = Math.min(debt(a.id)?.bal ?? a.amt, a.amt);
+      const d = debt(a.id);
+      const cap = Math.min(d?.bal ?? a.amt, a.amt);
       const take = Math.min(remaining, a.id==='rent'||a.id==='bills' ? a.amt : cap);
       steps.push({ ...a, take, deficit: Math.max(0, a.amt - take) });
       remaining -= take;
@@ -86,17 +78,19 @@ function allocate(amount, phase, debts) {
       const d = debt(id);
       if (!d || d.bal <= 0) continue;
       const take = Math.min(remaining, d.bal);
-      steps.push({ id, label:d.name, detail:`Clear at ${d.rate}% — kill it now`, amt:d.bal, take, deficit:d.bal-take, attack:true });
+      steps.push({ id, label:d.name, detail:`Clear at ${DEBT_META[id]?.rate||0}% — kill it now`, amt:d.bal, take, deficit:d.bal-take, attack:true });
       remaining -= take;
     }
     if (remaining > 0) {
-      const tdBal = debt('td')?.bal || 0;
+      const d = debt('td');
+      const tdBal = d?.bal || 0;
       const take = Math.min(remaining, tdBal);
       if (take > 0) steps.push({ id:'td', label:'TD First Class ···6932', detail:'Remaining goes to TD', amt:tdBal, take, deficit:tdBal-take, attack:false });
       remaining -= take;
     }
   } else {
-    const tdBal = debt('td')?.bal || 0;
+    const d = debt('td');
+    const tdBal = d?.bal || 0;
     const take = Math.min(remaining, tdBal);
     steps.push({ id:'td', label:'TD First Class ···6932', detail:'Phase 3 — everything kills TD', amt:tdBal, take, deficit:tdBal-take, attack:true });
     remaining -= take;
@@ -108,8 +102,7 @@ function allocate(amount, phase, debts) {
   return steps;
 }
 
-export default function MoneyRoom() {
-  const [state, setState]         = useState(loadState);
+export default function MoneyRoom({ debts, incomeLog, spendingLog, updateDebt, addIncome, deleteIncome, addSpend, deleteSpend }) {
   const [tab, setTab]             = useState('allocate');
   const [incomeType, setIncomeType] = useState('paycheck');
   const [incomeAmt, setIncomeAmt] = useState('2350');
@@ -121,32 +114,35 @@ export default function MoneyRoom() {
   const [editingId, setEditingId] = useState(null);
   const [editVal, setEditVal]     = useState('');
 
-  const save = (next) => { setState(next); try { localStorage.setItem('bi_money', JSON.stringify(next)); } catch(e) {} };
+  // Use debts from Supabase prop, sorted by sort_order
+  const sortedDebts = [...(debts||[])].sort((a,b)=>(a.sort_order||0)-(b.sort_order||0));
+  const totalDebt = sortedDebts.reduce((s,d)=>s+(d.bal||0),0);
 
-  const { debts, incomeLog } = state;
-  const totalDebt = debts.reduce((s,d)=>s+d.bal,0);
-
+  const today = new Date();
   const anchorMs    = PAY_ANCHOR.getTime();
-  const todayMs     = TODAY_FIXED.getTime();
+  const todayMs     = today.getTime();
   const currentN    = Math.floor((todayMs - anchorMs) / MS_BIWEEK);
   const periodStart = new Date(anchorMs + currentN * MS_BIWEEK);
   const sep2026 = new Date(2026,8,1), oct2026 = new Date(2026,9,1);
   const phase   = periodStart < sep2026 ? 1 : periodStart < oct2026 ? 2 : 3;
   const phaseLabel= ['','Phase 1 — Attack Amex','Phase 2 — Reimburse & clear','Phase 3 — TD knockout'][phase];
   const phaseColor= [C.gold, C.orange, C.red, C.gold][phase];
-  const daysLeft  = Math.max(0,Math.round((TARGET_DATE-TODAY_FIXED)/86400000));
+  const daysLeft  = Math.max(0,Math.round((TARGET_DATE-today)/86400000));
   const paidPct   = Math.max(0,Math.round(((TOTAL_ORIGINAL-totalDebt)/TOTAL_ORIGINAL)*100));
   const periodKey = periodStart.toISOString().slice(0,10);
+
+  // Normalize debt for allocate (handle both debt_id and id field names)
+  const debtsForAllocate = sortedDebts.map(d => ({ ...d, id: d.debt_id || d.id }));
 
   function runAllocate() {
     const amt = parseFloat(incomeAmt);
     if (!amt||amt<=0) return;
     sfxCheck();
-    setAllocation(allocate(amt, phase, debts));
+    setAllocation(allocate(amt, phase, debtsForAllocate));
     setConfirmed(false);
   }
 
-  function confirmAllocation() {
+  async function confirmAllocation() {
     const amt = parseFloat(incomeAmt);
     sfxKO();
     const paid = {};
@@ -154,25 +150,31 @@ export default function MoneyRoom() {
       const baseId = s.id.replace('_attack','').replace('_extra','');
       paid[baseId] = (paid[baseId]||0) + s.take;
     });
-    const newDebts = debts.map(d => ({ ...d, bal: Math.max(0, d.bal - (paid[d.id]||0)) }));
-    const entry = {
-      id: Date.now(),
+    // Update each debt balance in Supabase
+    for (const d of sortedDebts) {
+      const debtId = d.debt_id || d.id;
+      if (paid[debtId]) {
+        const newBal = Math.max(0, d.bal - paid[debtId]);
+        await updateDebt(d.debt_id, newBal);
+      }
+    }
+    // Log income
+    await addIncome({
       period: periodKey,
       type: incomeType,
       amt,
       note: incomeNote.trim() || INCOME_TYPES.find(t=>t.id===incomeType)?.label || 'Income',
-      date: TODAY_FIXED.toISOString().slice(0,10),
+      date: today.toISOString().slice(0,10),
       allocation: allocation.map(s=>({ label:s.label, take:s.take })),
-    };
-    save({ ...state, debts: newDebts, incomeLog: [...(incomeLog||[]), entry] });
+    });
     setConfirmed(true);
     setTimeout(()=>{ setAllocation(null); setConfirmed(false); setIncomeAmt(''); setIncomeNote(''); }, 3500);
   }
 
-  function updateDebtBal(id, val) {
+  async function updateDebtBal(debtId, val) {
     const n = parseFloat(val);
     if (isNaN(n)||n<0) return;
-    save({ ...state, debts: debts.map(d=>d.id===id?{...d,bal:Math.round(n*100)/100}:d) });
+    await updateDebt(debtId, Math.round(n*100)/100);
     setEditingId(null); setEditVal('');
   }
 
@@ -196,11 +198,16 @@ export default function MoneyRoom() {
     return updates;
   }
 
-  function applyPaste() {
+  async function applyPaste() {
     const updates = parseStatement(statPaste);
     if (!Object.keys(updates).length) return;
     sfxCheck();
-    save({ ...state, debts: debts.map(d=>updates[d.id]!==undefined?{...d,bal:updates[d.id]}:d) });
+    for (const d of sortedDebts) {
+      const debtId = d.debt_id || d.id;
+      if (updates[debtId] !== undefined) {
+        await updateDebt(d.debt_id, updates[debtId]);
+      }
+    }
     setStatPaste('');
   }
 
@@ -238,10 +245,10 @@ export default function MoneyRoom() {
 
       {/* TABS */}
       <div style={{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:5, marginBottom:16 }}>
-        {[['allocate','ALLOCATE'],['log','LOG'],['debts','BALANCES'],['statement','STATEMENT']].map(([id,lbl2])=>(
+        {[['allocate','ALLOCATE'],['log','LOG'],['debts','BALANCES'],['statement','STATEMENT']].map(([id,l])=>(
           <button key={id} onClick={()=>{ sfxTap(); setTab(id); }}
             style={{ ...mono, padding:'8px 4px', borderRadius:3, border:`1px solid ${tab===id?C.gold:C.border}`, background:tab===id?C.gold:'transparent', color:tab===id?'#0D0D0D':C.muted, fontSize:8, letterSpacing:'0.1em', fontWeight:700, cursor:'pointer' }}>
-            {lbl2}
+            {l}
           </button>
         ))}
       </div>
@@ -267,32 +274,22 @@ export default function MoneyRoom() {
           <div style={{ ...lbl, marginBottom:6 }}>AMOUNT</div>
           <div style={{ position:'relative', marginBottom:10 }}>
             <span style={{ ...mono, position:'absolute', left:14, top:'50%', transform:'translateY(-50%)', color:C.gold, fontSize:20, fontWeight:700 }}>$</span>
-            <input
-              value={incomeAmt}
-              onChange={e=>setIncomeAmt(e.target.value)}
-              onKeyDown={e=>e.key==='Enter'&&runAllocate()}
-              placeholder="0.00"
-              inputMode="decimal"
-              style={{ ...mono, width:'100%', background:'#0a0a0a', border:`2px solid ${C.gold}`, borderRadius:4, padding:'14px 14px 14px 34px', fontSize:22, color:C.gold, outline:'none' }}
-            />
+            <input value={incomeAmt} onChange={e=>setIncomeAmt(e.target.value)} onKeyDown={e=>e.key==='Enter'&&runAllocate()}
+              placeholder="0.00" inputMode="decimal"
+              style={{ ...mono, width:'100%', background:'#0a0a0a', border:`2px solid ${C.gold}`, borderRadius:4, padding:'14px 14px 14px 34px', fontSize:22, color:C.gold, outline:'none' }} />
           </div>
 
-          <input
-            value={incomeNote}
-            onChange={e=>setIncomeNote(e.target.value)}
+          <input value={incomeNote} onChange={e=>setIncomeNote(e.target.value)}
             placeholder="What is this? (e.g. Halifax guarantee, OBGMs $13k reimbursement)"
-            style={{ ...mono, width:'100%', background:'#0a0a0a', border:`1px solid ${C.border}`, borderRadius:3, padding:'10px 12px', fontSize:12, color:C.text, outline:'none', marginBottom:14 }}
-          />
+            style={{ ...mono, width:'100%', background:'#0a0a0a', border:`1px solid ${C.border}`, borderRadius:3, padding:'10px 12px', fontSize:12, color:C.text, outline:'none', marginBottom:14 }} />
 
           <button onClick={runAllocate} style={{ ...btnFull(C.gold), width:'100%', padding:14, fontSize:12, letterSpacing:'0.3em' }}>
             SHOW ME WHERE IT GOES →
           </button>
 
-          {/* RESULT */}
           {allocation && !confirmed && (
             <div style={{ marginTop:20 }}>
               <div style={{ ...lbl, color:C.orange, marginBottom:12 }}>MARCHING ORDERS — ${parseFloat(incomeAmt||0).toLocaleString()} IN</div>
-
               {allocation.map((step,i)=>{
                 const col = step.attack ? C.orange : step.spend ? C.blue : C.text;
                 const bg  = step.attack ? '#1a1200' : step.spend ? '#060d18' : C.card;
@@ -334,9 +331,7 @@ export default function MoneyRoom() {
               <button onClick={confirmAllocation} style={{ ...btnFull(C.orange), width:'100%', padding:14, fontSize:12, letterSpacing:'0.2em', marginTop:8 }}>
                 ✓ I DID THIS — UPDATE MY BALANCES
               </button>
-              <button onClick={()=>setAllocation(null)} style={{ ...btnOut(C.muted), width:'100%', padding:10, fontSize:10, marginTop:6 }}>
-                CANCEL
-              </button>
+              <button onClick={()=>setAllocation(null)} style={{ ...btnOut(C.muted), width:'100%', padding:10, fontSize:10, marginTop:6 }}>CANCEL</button>
             </div>
           )}
 
@@ -356,20 +351,18 @@ export default function MoneyRoom() {
             <div style={{ ...lbl, color:C.blue }}>INCOME LOG</div>
             <div style={{ ...mono, fontSize:11, color:C.muted }}>Every dollar logged. Tap × to remove an entry.</div>
           </div>
-
           {!(incomeLog||[]).length && (
             <div style={{ ...card, textAlign:'center', padding:'32px 16px', opacity:0.4 }}>
               <div style={{ ...mono, fontSize:12, color:C.dim }}>Nothing logged yet. Hit ALLOCATE and enter your first pay.</div>
             </div>
           )}
-
           {[...(incomeLog||[])].reverse().map(entry=>(
             <div key={entry.id} style={{ ...card }}>
               <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', gap:8 }}>
                 <div style={{ flex:1 }}>
                   <div style={{ display:'flex', gap:10, alignItems:'baseline', marginBottom:4 }}>
                     <span style={{ ...display, fontSize:18, color:C.gold }}>${entry.amt.toLocaleString()}</span>
-                    <span style={{ ...mono, fontSize:9, color:C.muted, letterSpacing:'0.15em' }}>{entry.type.toUpperCase()}</span>
+                    <span style={{ ...mono, fontSize:9, color:C.muted, letterSpacing:'0.15em' }}>{(entry.type||'').toUpperCase()}</span>
                   </div>
                   <div style={{ ...mono, fontSize:12, color:C.text, marginBottom:3 }}>{entry.note}</div>
                   <div style={{ ...mono, fontSize:10, color:C.muted }}>{entry.date}</div>
@@ -383,7 +376,7 @@ export default function MoneyRoom() {
                     </div>
                   )}
                 </div>
-                <button onClick={()=>save({...state,incomeLog:(incomeLog||[]).filter(x=>x.id!==entry.id)})} style={{ ...mono, background:'transparent', border:'none', color:C.dim, fontSize:16, cursor:'pointer' }}>×</button>
+                <button onClick={()=>deleteIncome(entry.id)} style={{ ...mono, background:'transparent', border:'none', color:C.dim, fontSize:16, cursor:'pointer' }}>×</button>
               </div>
             </div>
           ))}
@@ -395,36 +388,36 @@ export default function MoneyRoom() {
         <div>
           <div style={{ ...card, borderLeft:`3px solid ${C.orange}` }}>
             <div style={{ ...lbl, color:C.orange }}>BALANCES</div>
-            <div style={{ ...mono, fontSize:11, color:C.muted, lineHeight:1.6 }}>Tap any card to update its balance. Or use STATEMENT to paste from your bank app.</div>
+            <div style={{ ...mono, fontSize:11, color:C.muted, lineHeight:1.6 }}>Tap any card to update its balance. Syncs across all your devices instantly.</div>
           </div>
-          {debts.map(d=>{
-            const attacking = (phase===1&&d.id==='amex')||(phase===3&&d.id==='td');
-            const orig = DEBT_DEFAULTS.find(x=>x.id===d.id)?.bal||1;
-            const pct  = Math.round((d.bal/orig)*100);
-            const isEd = editingId===d.id;
+          {sortedDebts.map(d=>{
+            const debtId = d.debt_id || d.id;
+            const meta = DEBT_META[debtId] || {};
+            const attacking = (phase===1&&debtId==='amex')||(phase===3&&debtId==='td');
+            const isEd = editingId===debtId;
             return (
-              <div key={d.id} style={{ ...card, borderLeft:`3px solid ${attacking?C.orange:C.border}`, cursor:'pointer' }}
-                onClick={()=>{ if(!isEd){setEditingId(d.id);setEditVal(String(d.bal));} }}>
+              <div key={debtId} style={{ ...card, borderLeft:`3px solid ${attacking?C.orange:C.border}`, cursor:'pointer' }}
+                onClick={()=>{ if(!isEd){setEditingId(debtId);setEditVal(String(d.bal));} }}>
                 <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', gap:8, marginBottom:8 }}>
                   <div style={{ flex:1 }}>
                     <div style={{ ...mono, fontSize:12, color:attacking?C.orange:C.text }}>{d.name}</div>
                     <div style={{ ...mono, fontSize:10, color:C.muted, marginTop:2 }}>
-                      {d.rate}% · min ${d.min} · due {d.due}{d.autopay?' · autopay':''}
+                      {meta.rate}% · min ${meta.min} · due {meta.due}{meta.autopay?' · autopay':''}
                       {attacking&&<span style={{ color:C.orange, marginLeft:6 }}>← ATTACKING</span>}
                     </div>
                   </div>
-                  <div style={{ ...display, fontSize:18, color:attacking?C.orange:C.text }}>${d.bal.toLocaleString()}</div>
+                  <div style={{ ...display, fontSize:18, color:attacking?C.orange:C.text }}>${(d.bal||0).toLocaleString()}</div>
                 </div>
                 <div style={{ background:'#0a0a0a', border:`1px solid ${C.border}`, borderRadius:2, height:4, overflow:'hidden', marginBottom:isEd?12:0 }}>
-                  <div style={{ height:'100%', width:`${pct}%`, background:attacking?C.orange:C.dim }} />
+                  <div style={{ height:'100%', width:`${Math.min(100, Math.round((d.bal / (d.bal + 1000)) * 100))}%`, background:attacking?C.orange:C.dim }} />
                 </div>
                 {isEd && (
                   <div style={{ display:'flex', gap:6 }} onClick={e=>e.stopPropagation()}>
                     <input autoFocus value={editVal} onChange={e=>setEditVal(e.target.value)}
-                      onKeyDown={e=>{ if(e.key==='Enter')updateDebtBal(d.id,editVal); if(e.key==='Escape'){setEditingId(null);setEditVal('');} }}
+                      onKeyDown={e=>{ if(e.key==='Enter')updateDebtBal(debtId,editVal); if(e.key==='Escape'){setEditingId(null);setEditVal('');} }}
                       inputMode="decimal"
                       style={{ ...mono, flex:1, background:'#0a0a0a', border:`1px solid ${C.gold}`, borderRadius:3, padding:'9px 11px', fontSize:14, color:C.gold, outline:'none' }} />
-                    <button onClick={()=>updateDebtBal(d.id,editVal)} style={{ ...btnFull(C.gold), padding:'9px 16px' }}>SET</button>
+                    <button onClick={()=>updateDebtBal(debtId,editVal)} style={{ ...btnFull(C.gold), padding:'9px 16px' }}>SET</button>
                     <button onClick={e=>{e.stopPropagation();setEditingId(null);setEditVal('');}} style={{ ...btnOut(C.muted), padding:'9px 12px' }}>✕</button>
                   </div>
                 )}
@@ -432,7 +425,7 @@ export default function MoneyRoom() {
             );
           })}
           <div style={{ ...mono, fontSize:10, color:C.dim, marginTop:6, lineHeight:1.7 }}>
-            Tangerine LOC is autopay from savings — it pays itself. KMHN charges on TD are therapy reimbursed by Manulife.
+            Tangerine LOC is autopay from savings — it pays itself. All balances sync across your devices.
           </div>
         </div>
       )}
@@ -442,7 +435,7 @@ export default function MoneyRoom() {
         <div>
           <div style={{ ...card, borderLeft:`3px solid ${C.blue}` }}>
             <div style={{ ...lbl, color:C.blue }}>LOAD STATEMENT</div>
-            <div style={{ ...mono, fontSize:11, color:C.muted, lineHeight:1.6 }}>Paste text from your bank or credit card app and the app will scan for balances automatically. Nothing leaves your device.</div>
+            <div style={{ ...mono, fontSize:11, color:C.muted, lineHeight:1.6 }}>Paste text from your bank or credit card app and the app will scan for balances automatically.</div>
           </div>
           <div style={{ display:'flex', gap:6, marginBottom:14 }}>
             {[['paste','PASTE & SCAN'],['manual','MANUAL ENTRY']].map(([k,l])=>(
@@ -455,43 +448,36 @@ export default function MoneyRoom() {
 
           {statMode==='paste' && (
             <>
-              <textarea
-                value={statPaste}
-                onChange={e=>setStatPaste(e.target.value)}
-                placeholder={"Paste any text from your bank app, online banking, or statement.\n\nExamples that work:\n  TD First Class Travel Visa ****6932  $21,854.00\n  Amex Cobalt ****1700  Balance: $4,296\n  Scotiabank Visa *3026 — $2,906.14\n\nThe scanner looks for your card names and pulls the dollar amount on the same line."}
+              <textarea value={statPaste} onChange={e=>setStatPaste(e.target.value)}
+                placeholder={"Paste any text from your bank app, online banking, or statement.\n\nExamples:\n  TD First Class Travel Visa ****6932  $21,854.00\n  Amex Cobalt ****1700  Balance: $4,296\n  Scotiabank Visa *3026 — $2,906.14\n  Tangerine MC ****6704 — $2,501.00\n  Tangerine LOC ****6380 — $2,713.00"}
                 rows={10}
-                style={{ ...mono, width:'100%', background:'#0a0a0a', border:`1px solid ${C.border}`, borderRadius:3, padding:'10px 12px', fontSize:11, color:C.text, outline:'none', resize:'vertical', lineHeight:1.6, marginBottom:12 }}
-              />
-              <button onClick={applyPaste} style={{ ...btnFull(C.blue), width:'100%', padding:12 }}>
-                SCAN &amp; UPDATE BALANCES
-              </button>
-              <div style={{ ...mono, fontSize:10, color:C.muted, marginTop:10, lineHeight:1.6 }}>
-                If a card isn't detected automatically, switch to MANUAL ENTRY and update it directly.
-              </div>
+                style={{ ...mono, width:'100%', background:'#0a0a0a', border:`1px solid ${C.border}`, borderRadius:3, padding:'10px 12px', fontSize:11, color:C.text, outline:'none', resize:'vertical', lineHeight:1.6, marginBottom:12 }} />
+              <button onClick={applyPaste} style={{ ...btnFull(C.blue), width:'100%', padding:12 }}>SCAN & UPDATE BALANCES</button>
             </>
           )}
 
           {statMode==='manual' && (
             <>
               <div style={{ ...mono, fontSize:11, color:C.muted, lineHeight:1.6, marginBottom:12 }}>Enter each balance from your latest statement.</div>
-              {debts.map(d=>{
-                const isEd = editingId===d.id;
+              {sortedDebts.map(d=>{
+                const debtId = d.debt_id || d.id;
+                const isEd = editingId===debtId;
                 return (
-                  <div key={d.id} style={{ ...card }}>
+                  <div key={debtId} style={{ ...card }}>
                     <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:isEd?10:0 }}>
                       <div>
                         <div style={{ ...mono, fontSize:12, color:C.text }}>{d.name}</div>
-                        <div style={{ ...mono, fontSize:10, color:C.muted }}>Current: ${d.bal.toLocaleString()}</div>
+                        <div style={{ ...mono, fontSize:10, color:C.muted }}>Current: ${(d.bal||0).toLocaleString()}</div>
                       </div>
-                      {!isEd && <button onClick={()=>{setEditingId(d.id);setEditVal(String(d.bal));}} style={{ ...btnOut(C.gold), padding:'6px 12px', fontSize:9 }}>UPDATE</button>}
+                      {!isEd && <button onClick={()=>{setEditingId(debtId);setEditVal(String(d.bal));}} style={{ ...btnOut(C.gold), padding:'6px 12px', fontSize:9 }}>UPDATE</button>}
                     </div>
                     {isEd && (
                       <div style={{ display:'flex', gap:6 }}>
                         <input autoFocus value={editVal} onChange={e=>setEditVal(e.target.value)}
-                          onKeyDown={e=>{ if(e.key==='Enter')updateDebtBal(d.id,editVal); if(e.key==='Escape'){setEditingId(null);setEditVal('');} }}
+                          onKeyDown={e=>{ if(e.key==='Enter')updateDebtBal(debtId,editVal); if(e.key==='Escape'){setEditingId(null);setEditVal('');} }}
                           inputMode="decimal" placeholder="New balance from statement"
                           style={{ ...mono, flex:1, background:'#0a0a0a', border:`1px solid ${C.gold}`, borderRadius:3, padding:'9px 11px', fontSize:13, color:C.gold, outline:'none' }} />
-                        <button onClick={()=>updateDebtBal(d.id,editVal)} style={{ ...btnFull(C.gold), padding:'9px 14px' }}>SET</button>
+                        <button onClick={()=>updateDebtBal(debtId,editVal)} style={{ ...btnFull(C.gold), padding:'9px 14px' }}>SET</button>
                         <button onClick={()=>{setEditingId(null);setEditVal('');}} style={{ ...btnOut(C.muted), padding:'9px 10px' }}>✕</button>
                       </div>
                     )}
@@ -502,7 +488,6 @@ export default function MoneyRoom() {
           )}
         </div>
       )}
-
       <style>{`@keyframes biPop{from{transform:scale(0.92);opacity:0}to{transform:scale(1);opacity:1}}`}</style>
     </div>
   );
