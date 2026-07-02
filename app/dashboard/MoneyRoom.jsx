@@ -39,11 +39,13 @@ function allocate(amount, phase, debts) {
 
   if (phase === 1) {
     const mins = [
-      { id:'td',     label:'TD First Class ···6932',  detail:'Min payment — due 6th',               amt:228  },
-      { id:'scotia', label:'Scotiabank Visa ···3026', detail:'Min payment — due 6th',               amt:42   },
-      { id:'amex',   label:'Amex Cobalt ···1700',     detail:'Min $89 — due 18th',                  amt:89   },
-      { id:'rent',   label:'Rent',                    detail:'Monthly — skip if already paid this month', amt:625, optional:true },
-      { id:'bills',  label:'Bills & subscriptions',   detail:'Fido, Bell, hydro, subs — ~$292',     amt:292, optional:true },
+      { id:'td',       label:'TD First Class ···6932',  detail:'Min payment — due 6th',               amt:228  },
+      { id:'scotia',   label:'Scotiabank Visa ···3026', detail:'Min payment — due 6th',               amt:42   },
+      { id:'amex',     label:'Amex Cobalt ···1700',     detail:'Min $89 — due 18th',                  amt:89   },
+      { id:'tang_mc',  label:'Tangerine MC ···6704',    detail:'Min $52 — due 24th',                  amt:52   },
+      { id:'tang_loc', label:'Tangerine LOC ···6380',   detail:'Min $76 — due 21st (autopay)',         amt:76   },
+      { id:'rent',     label:'Rent',                    detail:'Monthly — skip if already paid this month', amt:625, optional:true },
+      { id:'bills',    label:'Bills & subscriptions',   detail:'Fido, Bell, hydro, subs — ~$292',     amt:292, optional:true },
     ];
     for (const a of mins) {
       if (remaining <= 0) break;
